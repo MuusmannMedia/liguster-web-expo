@@ -1,4 +1,92 @@
 {
-  "name": "liguster-clean",
-  "slug": "liguster-clean"
+  "expo": {
+    "name": "Liguster",
+    "slug": "liguster-clean",
+    "scheme": "ligusterapp",
+    "version": "1.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+
+    "ios": {
+      "buildNumber": "2",
+      "supportsTablet": true,
+      "bundleIdentifier": "dk.liguster.app",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSLocationWhenInUseUsageDescription": "Vi bruger din position til at vise dig på kortet og finde relevante ting i nærheden af dig.",
+        "NSPhotoLibraryUsageDescription": "Vi skal bruge adgang til dine billeder for at du kan uploade billeder til aktiviteter og opslag.",
+        "NSPhotoLibraryAddUsageDescription": "Vi skal bruge adgang til at gemme billeder, når du downloader eller redigerer.",
+        "NSCameraUsageDescription": "Vi skal bruge adgang til kameraet, hvis du vil tage et billede direkte i appen."
+      }
+    },
+
+    "android": {
+      "package": "dk.liguster.app",
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#131921"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "POST_NOTIFICATIONS",
+        "READ_MEDIA_IMAGES"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "data": [{ "scheme": "ligusterapp" }],
+          "category": ["BROWSABLE", "DEFAULT"]
+        }
+      ]
+    },
+
+    "splash": {
+      "image": "./assets/images/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#131921"
+    },
+
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+
+    "plugins": [
+      "expo-router",
+      "expo-notifications",
+      "expo-font",
+      "expo-web-browser",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1",
+            "newArchEnabled": true
+          }
+        }
+      ]
+    ],
+
+    "experiments": { "typedRoutes": true, "tsconfigPaths": true },
+    "assetBundlePatterns": ["**/*"],
+
+    "extra": {
+      "router": {},
+      "eas": { "projectId": "510eb874-f1b3-4c29-9c58-4d19f0dd6272" },
+      "supabaseUrl": "https://gizskyfynvyvhnaqcyax.supabase.co",
+      "supabaseAnonKey": "REPLACEME",
+      "privacyUrl": "https://www.liguster-app.dk/privacy"
+    },
+
+    "runtimeVersion": "1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/510eb874-f1b3-4c29-9c58-4d19f0dd6272"
+    }
+  }
 }
