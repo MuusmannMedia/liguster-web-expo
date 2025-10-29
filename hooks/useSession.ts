@@ -26,10 +26,11 @@ export function useSession() {
     const loadInitial = async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
+
         if (error) {
-          // Hvis vi lander i en invalideret refresh-token state, så ryd op
+          // hvis refresh-token er død → log ud og ryd
           if (String(error.message).toLowerCase().includes("refresh token")) {
-            await supabase.auth.signOut(); // nulstil lokal session
+            await supabase.auth.signOut();
             safeSetSession(null);
           } else {
             console.warn("getSession error:", error.message);
@@ -44,24 +45,31 @@ export function useSession() {
 
     loadInitial();
 
-    // Lyt til auth-ændringer (login/logout/refresh)
+    // auth events (login / logout / token refresh)
     const { data: sub } = supabase.auth.onAuthStateChange(
       async (event: AuthEvent, newSession) => {
-        // TOKEN_REFRESHED kan komme med null hvis refresh fejler; ryd i så fald op
-        if (event === "SIGNED_OUT") safeSetSession(null);
-        else safeSetSession(newSession ?? null);
+        if (event === "SIGNED_OUT") {
+          safeSetSession(null);
+          return;
+        }
 
-        // Defensiv oprydning ved fejlende refresh
-        if (!newSession && (event as string) === "TOKEN_REFRESHED") {
+        // defensivt: hvis refresh fejler og vi ender uden session
+        if (event === "TOKEN_REFRESHED" && !newSession) {
           await supabase.auth.signOut();
           safeSetSession(null);
+          return;
         }
+
+        safeSetSession(newSession ?? null);
       }
     );
 
-    // Foreground refresh (web)
+    // web: når tab bliver aktiv igen → sync session fra supabase (localStorage)
     const onVisibility = async () => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "visible"
+      ) {
         const { data } = await supabase.auth.getSession();
         safeSetSession(data?.session ?? null);
       }
@@ -70,11 +78,11 @@ export function useSession() {
       document.addEventListener("visibilitychange", onVisibility);
     }
 
-    // Foreground refresh (native)
+    // native: når app går fra baggrund -> aktiv → sync session igen
     const onAppStateChange = async (nextState: string) => {
       const prev = appStateRef.current;
       appStateRef.current = nextState as any;
-      // Når vi går fra background/inactive -> active
+
       if (prev.match(/inactive|background/) && nextState === "active") {
         const { data } = await supabase.auth.getSession();
         safeSetSession(data?.session ?? null);

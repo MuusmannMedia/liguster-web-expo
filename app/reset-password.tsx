@@ -1,6 +1,5 @@
 // app/reset-password.tsx
-import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import * as React from "react";
 import {
   Alert,
   Keyboard,
@@ -12,158 +11,225 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../utils/supabase';
+} from "react-native";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import * as Linking from "expo-linking";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { supabase } from "../utils/supabase";
 
-// Skjul header i Stack
 export const options = { headerShown: false };
+
+// Helper: parse "a=1&b=2" til { a: "1", b: "2" }
+const parseKV = (s: string) =>
+  Object.fromEntries(
+    s
+      .split("&")
+      .filter(Boolean)
+      .map((kv) => {
+        const [k, v = ""] = kv.split("=");
+        return [decodeURIComponent(k), decodeURIComponent(v)];
+      })
+  ) as Record<string, string>;
 
 export default function ResetPasswordScreen() {
   const router = useRouter();
 
-  const [checking, setChecking] = useState(true);
-  const [hasSession, setHasSession] = useState(false);
+  // Supabase redirect leverer bl.a.: type=recovery, access_token, refresh_token
+  const params = useLocalSearchParams<{
+    type?: string;
+    access_token?: string;
+    refresh_token?: string;
+  }>();
+  const type = params.type;
+  const access_token = params.access_token;
+  const refresh_token = params.refresh_token;
 
-  const [pw1, setPw1] = useState('');
-  const [pw2, setPw2] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [busy, setBusy] = React.useState(true); // sætter session
+  const [ready, setReady] = React.useState(false); // når formular kan vises
+  const [newPwd, setNewPwd] = React.useState("");
+  const [confirmPwd, setConfirmPwd] = React.useState("");
+  const [updating, setUpdating] = React.useState(false);
 
-  const pwMin = 8;
-  const pwValid = useMemo(() => pw1.length >= pwMin && pw1 === pw2, [pw1, pw2]);
+  const confirmRef = React.useRef<TextInput>(null);
 
-  // Tjek for aktiv session (lyt også efter ændringer)
-  useEffect(() => {
-    let unsub: (() => void) | undefined;
+  // 0) Fallback: Hvis vi ikke har tokens i query, prøv at hente den rå URL og konverter # → ?
+  React.useEffect(() => {
+    let cancelled = false;
 
-    const run = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        setHasSession(!!data.session);
+    const ensureQueryParams = async () => {
+      // Allerede OK?
+      if (access_token && refresh_token) return;
 
-        const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-          setHasSession(!!session);
-        });
-        unsub = () => sub.subscription.unsubscribe();
-      } finally {
-        setChecking(false);
-      }
+      // Læs initial URL (cold start via deep link)
+      const initial = await Linking.getInitialURL();
+
+      // Eller lyt (hvis appen allerede kører)
+      const handle = async (incoming: string | null) => {
+        if (!incoming) return;
+
+        // 1) Prøv query først
+        const parsed = Linking.parse(incoming);
+        const q = parsed.queryParams ?? {};
+        if (q.access_token && q.refresh_token) return; // så får useLocalSearchParams dem allerede
+
+        // 2) Prøv hash
+        const hashIndex = incoming.indexOf("#");
+        if (hashIndex >= 0) {
+          const raw = incoming.slice(hashIndex + 1); // "type=recovery&access_token=…"
+          const kv = parseKV(raw);
+          if (kv.access_token && kv.refresh_token) {
+            // Navigér til samme skærm med *query*-parametre
+            router.replace({
+              pathname: "/reset-password",
+              params: {
+                type: kv.type ?? "recovery",
+                access_token: kv.access_token,
+                refresh_token: kv.refresh_token,
+              },
+            });
+          }
+        }
+      };
+
+      await handle(initial);
+
+      // Sæt event-listener for det tilfælde at skærmen er åben når linket kommer
+      const sub = Linking.addEventListener("url", ({ url }) => { void handle(url); });
+      return () => sub.remove();
     };
 
-    run();
-    return () => { if (unsub) unsub(); };
-  }, []);
+    const cleanup = ensureQueryParams();
+    return () => { cancelled = true; void cleanup; };
+    // Kør kun når vi ikke allerede har parametre
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access_token, refresh_token]);
 
-  const handleSave = async () => {
-    if (!hasSession) {
-      Alert.alert(
-        'Fejl',
-        'Auth session mangler. Åbn nulstillingslinket fra din mail igen, og prøv straks.'
-      );
+  // 1) Sæt session ud fra query-params (når de er på plads)
+  React.useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        if (type === "recovery" && access_token && refresh_token) {
+          const { error } = await supabase.auth.setSession({
+            access_token: String(access_token),
+            refresh_token: String(refresh_token),
+          });
+          if (error) {
+            Alert.alert("Fejl", "Kunne ikke etablere session fra nulstillingslinket.");
+          }
+        }
+      } finally {
+        if (!cancelled) {
+          setBusy(false);
+          setReady(true);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [type, access_token, refresh_token]);
+
+  // 2) Opdater adgangskode
+  const onSubmit = async () => {
+    if (!newPwd || !confirmPwd) {
+      Alert.alert("Manglende felt", "Udfyld begge felter.");
       return;
     }
-    if (!pw1 || !pw2) {
-      Alert.alert('Fejl', 'Udfyld begge felter.');
+    if (newPwd.length < 8) {
+      Alert.alert("For kort adgangskode", "Adgangskoden skal som minimum være 8 tegn.");
       return;
     }
-    if (pw1.length < pwMin) {
-      Alert.alert('Fejl', `Kodeord skal mindst være på ${pwMin} tegn.`);
-      return;
-    }
-    if (pw1 !== pw2) {
-      Alert.alert('Fejl', 'Kodeordene er ikke ens.');
+    if (newPwd !== confirmPwd) {
+      Alert.alert("Mismatch", "De to adgangskoder er ikke ens.");
       return;
     }
 
-    setSubmitting(true);
-    const { error } = await supabase.auth.updateUser({ password: pw1 });
-    setSubmitting(false);
+    try {
+      setUpdating(true);
+      const { error } = await supabase.auth.updateUser({ password: newPwd });
+      if (error) throw error;
 
-    if (error) {
-      Alert.alert('Fejl', `Kunne ikke opdatere dit kodeord: ${error.message}`);
-      return;
+      Alert.alert("Succes", "Din adgangskode er opdateret.", [
+        { text: "OK", onPress: () => router.replace("/Opslag") },
+      ]);
+    } catch (e: any) {
+      Alert.alert("Kunne ikke opdatere", e?.message ?? "Prøv igen.");
+    } finally {
+      setUpdating(false);
     }
-
-    Alert.alert('Succes', 'Dit kodeord er opdateret. Log ind igen.', [
-      { text: 'OK', onPress: () => router.replace('/LoginScreen') },
-    ]);
   };
 
-  // UI states
-  if (checking) {
-    return (
-      <View style={styles.loadingWrap}>
-        <Text style={styles.loadingTxt}>Forbereder nulstilling…</Text>
-      </View>
-    );
-  }
+  const goBack = () => router.replace("/LoginScreen"); // eller "/"
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#171C22' }}>
+    <View style={styles.root}>
+      {/* Tilbagepil */}
+      <SafeAreaView edges={["top"]} style={styles.backSafe}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="Tilbage"
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={styles.backIcon}>‹</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.select({ ios: "padding", android: "height" })}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-            {/* Til login */}
-            <TouchableOpacity style={styles.backIcon} onPress={() => router.replace('/LoginScreen')}>
-              <Text style={{ fontSize: 30, color: '#fff' }}>{'‹'}</Text>
-            </TouchableOpacity>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.centered}>
+            <Text style={styles.title}>Nulstil adgangskode</Text>
 
-            <Text style={styles.title}>Nyt kodeord</Text>
-            <Text style={styles.subtitle}>Indtast dit nye ønskede kodeord nedenfor.</Text>
-
-            {!hasSession ? (
-              <View style={{ maxWidth: 320, paddingHorizontal: 12 }}>
-                <Text style={styles.help}>
-                  Vi kunne ikke finde en aktiv nulstillingssession. Åbn venligst
-                  nulstillingslinket fra din mail igen og kom straks herind.
-                </Text>
-                <TouchableOpacity
-                  onPress={() => router.replace('/LoginScreen')}
-                  style={[styles.button, { marginTop: 18 }]}
-                >
-                  <Text style={styles.buttonText}>TIL LOGIN</Text>
-                </TouchableOpacity>
-              </View>
+            {!ready ? (
+              <Text style={{ color: "#9fb0c0" }}>
+                {busy ? "Åbner nulstillingslink…" : "Klar."}
+              </Text>
             ) : (
               <>
                 <TextInput
                   style={styles.input}
-                  placeholder="Nyt kodeord"
+                  placeholder="Ny adgangskode"
                   placeholderTextColor="#999"
                   secureTextEntry
-                  value={pw1}
-                  onChangeText={setPw1}
                   autoCapitalize="none"
+                  value={newPwd}
+                  onChangeText={setNewPwd}
+                  returnKeyType="next"
+                  onSubmitEditing={() => confirmRef.current?.focus()}
+                  blurOnSubmit={false}
                 />
                 <TextInput
+                  ref={confirmRef}
                   style={styles.input}
-                  placeholder="Bekræft nyt kodeord"
+                  placeholder="Gentag adgangskode"
                   placeholderTextColor="#999"
                   secureTextEntry
-                  value={pw2}
-                  onChangeText={setPw2}
                   autoCapitalize="none"
+                  value={confirmPwd}
+                  onChangeText={setConfirmPwd}
+                  returnKeyType="go"
+                  onSubmitEditing={onSubmit}
                 />
 
                 <TouchableOpacity
-                  style={[styles.button, { opacity: submitting ? 0.6 : pwValid ? 1 : 0.7 }]}
-                  disabled={submitting || !pwValid}
-                  onPress={handleSave}
+                  style={[styles.button, updating && { opacity: 0.7 }]}
+                  onPress={onSubmit}
+                  disabled={updating}
                 >
-                  <Text style={styles.buttonText}>{submitting ? 'GEMMER…' : 'GEM KODEORD'}</Text>
-                </TouchableOpacity>
-
-                {!pwValid && (pw1.length > 0 || pw2.length > 0) ? (
-                  <Text style={styles.hint}>
-                    Kodeord skal være mindst {pwMin} tegn og felterne skal matche.
+                  <Text style={styles.buttonText}>
+                    {updating ? "Opdaterer…" : "OPDATER KODE"}
                   </Text>
-                ) : null}
+                </TouchableOpacity>
               </>
             )}
-          </SafeAreaView>
+          </View>
         </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
     </View>
@@ -171,51 +237,54 @@ export default function ResetPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
-  loadingWrap: {
-    flex: 1,
-    backgroundColor: '#171C22',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  loadingTxt: { color: '#fff', fontSize: 16, opacity: 0.9 },
+  root: { flex: 1, backgroundColor: "#171C22" },
 
-  container: {
+  backSafe: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 12,
+    zIndex: 20,
+  },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 4,
+  },
+  backIcon: { fontSize: 32, lineHeight: 32, color: "#fff" },
+
+  centered: {
     flex: 1,
-    backgroundColor: '#171C22',
-    alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 20,
   },
-  backIcon: {
-    position: 'absolute',
-    top: 36,
-    left: 16,
-    zIndex: 99,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'flex-start',
-  },
-  title: { color: '#fff', fontSize: 32, fontWeight: '800', marginTop: 56, marginBottom: 8, letterSpacing: 1.2 },
-  subtitle: { color: '#d9d9d9', fontSize: 16, textAlign: 'center', marginBottom: 24, paddingHorizontal: 20 },
-  help: { color: '#fff', textAlign: 'center', lineHeight: 20, opacity: 0.9 },
+
+  title: { color: "#fff", fontSize: 26, fontWeight: "700", marginBottom: 16 },
+
   input: {
-    backgroundColor: '#fff',
-    width: 280,
+    backgroundColor: "#fff",
+    width: 260,
     height: 48,
-    borderRadius: 10,
+    borderRadius: 40,
     paddingHorizontal: 14,
-    marginBottom: 18,
+    marginBottom: 12,
     fontSize: 16,
   },
+
   button: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+    backgroundColor: "#fff",
+    borderRadius: 40,
     width: 220,
     height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+    elevation: 1,
   },
-  buttonText: { color: '#171C22', fontSize: 16, fontWeight: '700', letterSpacing: 1 },
-  hint: { marginTop: 10, color: '#fff', opacity: 0.8, fontSize: 13 },
+  buttonText: { color: "#171C22", fontSize: 16, fontWeight: "700", letterSpacing: 1 },
 });

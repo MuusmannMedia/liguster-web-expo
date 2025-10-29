@@ -17,11 +17,17 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import { decode } from 'base64-arraybuffer';
 import BottomNav from '../components/BottomNav';
 import { useProfile } from '../hooks/useProfile';
 import { supabase } from '../utils/supabase';
 
 const PLACEHOLDER = 'https://placehold.co/250x250?text=Profil';
+
+/** Fælles afrundinger (matcher Events/Threads) */
+const RADII = { sm: 10, md: 14, lg: 18, xl: 22 };
 
 /** ====== iPhone vs iPad størrelser ====== */
 const iPhoneSizes = {
@@ -49,6 +55,15 @@ const iPadSizes = {
   sectionGapBelowName: 14,
   sectionGapBelowButtons: 18,
 };
+
+/** Hjælpere til billede */
+async function compressImage(uri: string, maxWidth = 1200, quality = 0.5) {
+  return ImageManipulator.manipulateAsync(
+    uri,
+    [{ resize: { width: maxWidth } }],
+    { compress: quality, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+  );
+}
 
 /** ====== Navn-editor ====== */
 const NameEditor = ({
@@ -78,7 +93,11 @@ const NameEditor = ({
           value={name}
           onChangeText={setName}
           placeholder="Indtast navn"
-          style={[styles.name, styles.nameInput, { fontSize: sizes.nameInputFont, paddingVertical: 7 }]}
+          style={[
+            styles.name,
+            styles.nameInput,
+            { fontSize: sizes.nameInputFont, paddingVertical: 7 },
+          ]}
           autoFocus
           returnKeyType="done"
           onSubmitEditing={handleSave}
@@ -102,7 +121,10 @@ const NameEditor = ({
       <Text style={[styles.name, { fontSize: sizes.nameFont }]}>{initialName || 'Bruger'}</Text>
       <TouchableOpacity
         onPress={() => setEditing(true)}
-        style={[styles.actionBox, { height: sizes.buttonHeight, alignSelf: 'center', paddingHorizontal: 18, marginTop: 6 }]}
+        style={[
+          styles.actionBox,
+          { height: sizes.buttonHeight, alignSelf: 'center', paddingHorizontal: 18, marginTop: 6 },
+        ]}
       >
         <Text style={[styles.actionBoxText, { fontSize: sizes.buttonFont }]}>RET NAVN</Text>
       </TouchableOpacity>
@@ -113,11 +135,12 @@ const NameEditor = ({
 /** ====== Skærm ====== */
 export default function MigScreen() {
   const navigation = useNavigation<any>();
-  const { user, profile, loading, uploading, handleLogout, pickAndUploadAvatar, setProfile } = useProfile();
+  const { user, profile, loading, handleLogout, setProfile } = useProfile();
 
   const [savingNameLocal, setSavingNameLocal] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const { width, height } = useWindowDimensions();
   const isTablet =
@@ -172,6 +195,81 @@ export default function MigScreen() {
     }
   };
 
+  /** 📷 Vælg & upload avatar — robust med base64 */
+  const pickAndUploadAvatarLocal = async () => {
+    if (!user?.id) return;
+
+    try {
+      setUploadingAvatar(true);
+
+      // 1) Tilladelse
+      const libPerm = await ImagePicker.getMediaLibraryPermissionsAsync();
+      if (!libPerm.granted) {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+          Alert.alert('Adgang nægtet', 'Giv adgang til billeder for at kunne uploade.');
+          return;
+        }
+      }
+
+      // 2) Vælg billede – bemærk base64: true
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [5, 6],
+        quality: 1,
+        base64: true,
+      });
+
+      // Afbrudt
+      // @ts-ignore
+      if (res.canceled) return;
+
+      // @ts-ignore
+      const asset = res.assets?.[0];
+      if (!asset?.uri) {
+        throw new Error('Intet billede valgt.');
+      }
+
+      // 3) Sørg for base64 (nogle platforme leverer ikke altid base64)
+      let base64 = asset.base64 as string | undefined;
+      if (!base64) {
+        const manipulated = await compressImage(asset.uri, 1200, 0.5);
+        base64 = manipulated.base64 || undefined;
+      }
+      if (!base64) {
+        throw new Error('Kunne ikke læse billedet (base64 mangler).');
+      }
+
+      // 4) Upload til Supabase Storage
+      const BUCKET = 'avatars';
+      const filePath = `public/${user.id}_${Date.now()}.jpg`;
+
+      const { error: upErr } = await supabase.storage
+        .from(BUCKET)
+        .upload(filePath, decode(base64), {
+          contentType: 'image/jpeg',
+          upsert: true,
+        });
+
+      if (upErr) throw upErr;
+
+      const { data } = supabase.storage.from(BUCKET).getPublicUrl(filePath);
+      const publicUrl = data?.publicUrl;
+      if (!publicUrl) throw new Error('Kunne ikke få public URL for billedet.');
+
+      // 5) Gem på bruger
+      const { error: updErr } = await supabase.from('users').update({ avatar_url: publicUrl }).eq('id', user.id);
+      if (updErr) throw updErr;
+
+      setProfile((prev: any) => ({ ...prev, avatar_url: publicUrl }));
+    } catch (e: any) {
+      Alert.alert('Fejl ved upload', e?.message ?? 'Ukendt fejl ved upload.');
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
   const confirmDeleteAccount = () => {
     Alert.alert(
       'Slet konto',
@@ -181,6 +279,7 @@ export default function MigScreen() {
   };
 
   const deleteAccount = async () => {
+    const { user } = await supabase.auth.getUser();
     if (!user) return;
     try {
       setDeleting(true);
@@ -239,17 +338,17 @@ export default function MigScreen() {
             style={[
               styles.centerArea,
               {
-                paddingHorizontal: H_PADDING,
-                paddingTop: TOP_NUDGE,           // ← lille skub ned
-                paddingBottom: NAV_HEIGHT,       // frihold for BottomNav
-                minHeight: Math.max(0, height - NAV_HEIGHT),
+                paddingHorizontal: 14,
+                paddingTop: isTablet ? 26 : 20,
+                paddingBottom: isTablet ? 160 : 120,
+                minHeight: Math.max(0, height - (isTablet ? 160 : 120)),
               },
             ]}
           >
             <View
               style={[
                 styles.card,
-                { padding: sizes.cardPadding, width: '100%', maxWidth: cardMaxWidth, alignSelf: 'center' },
+                { padding: (isTablet ? iPadSizes : iPhoneSizes).cardPadding, width: '100%', maxWidth: Math.min(width - 28, isTablet ? 720 : 420), alignSelf: 'center' },
               ]}
             >
               {/* Billede – fuld bredde, 5:6 */}
@@ -260,7 +359,7 @@ export default function MigScreen() {
               />
 
               {/* Navn + sort "RET NAVN" knap */}
-              <View style={{ alignItems: 'center', width: '100%', marginBottom: sizes.sectionGapBelowName }}>
+              <View style={{ alignItems: 'center', width: '100%', marginBottom: (isTablet ? iPadSizes : iPhoneSizes).sectionGapBelowName }}>
                 <NameEditor
                   initialName={initialDisplayName}
                   onSave={saveNameBoth}
@@ -272,49 +371,49 @@ export default function MigScreen() {
               {/* 4 knapper i to rækker under navnet */}
               <View style={[styles.fullRow, { gap: 10 }]}>
                 <TouchableOpacity
-                  onPress={pickAndUploadAvatar}
-                  disabled={uploading}
-                  style={[styles.actionBox, { height: sizes.buttonHeight, flex: 1 }]}
+                  onPress={pickAndUploadAvatarLocal}
+                  disabled={uploadingAvatar}
+                  style={[styles.actionBox, { height: (isTablet ? iPadSizes : iPhoneSizes).buttonHeight, flex: 1 }]}
                 >
-                  <Text style={[styles.actionBoxText, { fontSize: sizes.buttonFont }]}>
-                    {uploading ? 'UPLOADER…' : 'RET BILLEDE'}
+                  <Text style={[styles.actionBoxText, { fontSize: (isTablet ? iPadSizes : iPhoneSizes).buttonFont }]}>
+                    {uploadingAvatar ? 'UPLOADER…' : 'RET BILLEDE'}
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={removeAvatar}
                   disabled={removing}
-                  style={[styles.actionBox, { height: sizes.buttonHeight, flex: 1 }]}
+                  style={[styles.actionBox, { height: (isTablet ? iPadSizes : iPhoneSizes).buttonHeight, flex: 1 }]}
                 >
-                  <Text style={[styles.actionBoxText, { fontSize: sizes.buttonFont }]}>
+                  <Text style={[styles.actionBoxText, { fontSize: (isTablet ? iPadSizes : iPhoneSizes).buttonFont }]}>
                     {removing ? 'SLETTER…' : 'SLET BILLEDE'}
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              <View style={{ height: sizes.sectionGapBelowButtons }} />
+              <View style={{ height: (isTablet ? iPadSizes : iPhoneSizes).sectionGapBelowButtons }} />
 
               <View style={[styles.fullRow, { gap: 10 }]}>
                 <TouchableOpacity
                   onPress={handleLogout}
                   disabled={deleting}
-                  style={[styles.actionBox, { height: sizes.buttonHeight, flex: 1 }]}
+                  style={[styles.actionBox, { height: (isTablet ? iPadSizes : iPhoneSizes).buttonHeight, flex: 1 }]}
                 >
-                  <Text style={[styles.actionBoxText, { fontSize: sizes.buttonFont }]}>LOG UD</Text>
+                  <Text style={[styles.actionBoxText, { fontSize: (isTablet ? iPadSizes : iPhoneSizes).buttonFont }]}>LOG UD</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={confirmDeleteAccount}
                   disabled={deleting}
-                  style={[styles.actionBox, { height: sizes.buttonHeight, flex: 1 }]}
+                  style={[styles.actionBox, { height: (isTablet ? iPadSizes : iPhoneSizes).buttonHeight, flex: 1 }]}
                 >
-                  <Text style={[styles.actionBoxText, { fontSize: sizes.buttonFont }]}>
+                  <Text style={[styles.actionBoxText, { fontSize: (isTablet ? iPadSizes : iPhoneSizes).buttonFont }]}>
                     {deleting ? 'SLETTER…' : 'SLET KONTO'}
                   </Text>
                 </TouchableOpacity>
               </View>
 
               {/* Email + status nederst */}
-              <Text style={[styles.email, { fontSize: sizes.emailFont }]}>{user?.email ?? 'Ingen email'}</Text>
-              <Text style={[styles.status, { fontSize: sizes.statusFont }]}>
+              <Text style={[styles.email, { fontSize: (isTablet ? iPadSizes : iPhoneSizes).emailFont }]}>{user?.email ?? 'Ingen email'}</Text>
+              <Text style={[styles.status, { fontSize: (isTablet ? iPadSizes : iPhoneSizes).statusFont }]}>
                 {user ? 'Du er logget ind' : 'Du er ikke logget ind'}
               </Text>
             </View>
@@ -328,15 +427,16 @@ export default function MigScreen() {
 
 /** ====== Styles (device-uafhængige) ====== */
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#7C8996' },
+  root: { flex: 1, backgroundColor: '#869FB9' },
   centerArea: {
     flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+
   card: {
     backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: RADII.xl,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -344,7 +444,13 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  avatar: { borderRadius: 12, borderWidth: 0, borderColor: '#E8ECF1' },
+
+  avatar: {
+    borderRadius: RADII.xl,
+    borderWidth: 0,
+    borderColor: '#E8ECF1',
+    overflow: 'hidden',
+  },
 
   name: {
     fontWeight: '700',
@@ -360,15 +466,17 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     backgroundColor: '#f7f7f7',
     marginBottom: 10,
-    borderRadius: 5,
+    borderRadius: RADII.xl,
+    paddingHorizontal: 12,
   },
+
   actionText: { fontWeight: 'bold', textDecorationLine: 'underline' },
   email: { color: '#6B7280', marginTop: 12, textAlign: 'center' },
   status: { color: '#2A2D34', opacity: 0.7, marginTop: 6, textAlign: 'center' },
 
   actionBox: {
     backgroundColor: '#131921',
-    borderRadius: 8,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 14,

@@ -18,6 +18,23 @@ import {
 } from 'react-native';
 import { supabase } from '../utils/supabase';
 
+/** Fallback UUID v4 hvis runtime ikke har crypto.randomUUID */
+function fallbackUuid() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+async function makeUuid(): Promise<string> {
+  // @ts-ignore
+  if (globalThis?.crypto?.randomUUID) {
+    // @ts-ignore
+    return globalThis.crypto.randomUUID();
+  }
+  return fallbackUuid();
+}
+
 type Message = {
   id: string;
   thread_id: string;
@@ -31,14 +48,14 @@ type Message = {
 export default function ChatScreen() {
   const route = useRoute<any>();
   const navigation = useNavigation<any>();
-  const { threadId, postId, otherUserId } = route.params || {};
+  // Parametre: threadId (valgfri), postId (valgfri), otherUserId (krævet ved direkte chat)
+  const { threadId: threadIdParam, postId, otherUserId } = route.params || {};
 
   const { width, height } = useWindowDimensions();
   const isTablet =
     (Platform.OS === 'ios' && // @ts-ignore
       (Platform as any).isPad) || Math.min(width, height) >= 768;
 
-  // Responsive sizes
   const S = {
     avatar: isTablet ? 46 : 40,
     header: isTablet ? 22 : 18,
@@ -48,7 +65,7 @@ export default function ChatScreen() {
     bubblePadV: isTablet ? 14 : 12,
     bubblePadH: isTablet ? 18 : 16,
     rowPadH: isTablet ? 16 : 12,
-    bubbleMaxWidthPct: isTablet ? 0.68 : 0.76, // lidt bredere bobler på tablet
+    bubbleMaxWidthPct: isTablet ? 0.68 : 0.76,
   };
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -56,8 +73,14 @@ export default function ChatScreen() {
   const [userId, setUserId] = useState<string | null>(null);
   const [postTitle, setPostTitle] = useState('UKENDT OPSLAG');
   const [loading, setLoading] = useState(true);
+
+  // avatar + tekst-data til hoveder
   const [avatars, setAvatars] = useState<Record<string, string | null>>({});
   const [emails, setEmails] = useState<Record<string, string | null>>({});
+  const [names, setNames] = useState<Record<string, string | null>>({});
+
+  // Lokalt threadId: kan komme fra param eller findes/oprettes
+  const [threadId, setThreadId] = useState<string | null>(threadIdParam ?? null);
 
   const flatListRef = useRef<FlatList>(null);
 
@@ -65,16 +88,74 @@ export default function ChatScreen() {
     supabase.auth.getUser().then(({ data }) => setUserId(data?.user?.id || null));
   }, []);
 
+  /** Find eller opret thread_id hvis det mangler */
+  useEffect(() => {
+    if (!userId || !otherUserId) return;
+    if (threadId) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        // Find eksisterende tråd mellem de to brugere – adskil post-tråde og direkte tråde
+        let q = supabase
+          .from('messages')
+          .select('thread_id, post_id, created_at')
+          .or(
+            `and(sender_id.eq.${userId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${userId})`
+          )
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (postId) q = q.eq('post_id', postId);
+        else q = q.is('post_id', null);
+
+        const { data, error } = await q;
+
+        if (cancelled) return;
+        if (error) console.warn('Find thread error:', error.message);
+
+        if (data && data.length > 0) {
+          setThreadId(data[0].thread_id);
+        } else {
+          const newId = await makeUuid();
+          setThreadId(newId);
+        }
+      } catch (e) {
+        console.warn('Find thread error:', (e as Error)?.message);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, otherUserId, postId, threadId]);
+
+  /** Hjælper til at normalisere avatar_url til en brugbar public URL */
+  const normalizeAvatarUrl = (val?: string | null) => {
+    if (!val) return null;
+    // Allerede en fuld URL?
+    if (/^https?:\/\//i.test(val)) {
+      return `${val}${val.includes('?') ? '&' : '?'}t=${Date.now()}`;
+    }
+    // Ellers er det en sti i avatars-bucket
+    const { data } = supabase.storage.from('avatars').getPublicUrl(val);
+    return data?.publicUrl ? `${data.publicUrl}?t=${Date.now()}` : null;
+  };
+
+  /** Hent beskeder når vi kender threadId */
   useEffect(() => {
     if (!threadId) return;
     let cancelled = false;
 
-    const run = async () => {
+    (async () => {
       setLoading(true);
 
       const { data: msgs, error } = await supabase
         .from('messages')
-        .select('id,thread_id,sender_id,receiver_id,text,post_id,created_at,posts!left(overskrift)')
+        .select(
+          'id,thread_id,sender_id,receiver_id,text,post_id,created_at,posts!left(overskrift)'
+        )
         .eq('thread_id', threadId)
         .order('created_at', { ascending: true });
 
@@ -90,19 +171,20 @@ export default function ChatScreen() {
         // Titel
         let title: string | undefined = rows.find((m) => m.posts?.overskrift)?.posts?.overskrift;
         if (!title) {
-          const realPostId = postId || rows[0]?.post_id;
-          if (realPostId) {
+          if (postId) {
             const { data: p } = await supabase
               .from('posts')
               .select('overskrift')
-              .eq('id', realPostId)
+              .eq('id', postId)
               .maybeSingle();
-            if (p?.overskrift) title = p.overskrift;
+            title = p?.overskrift;
+          } else {
+            title = 'Direkte besked';
           }
         }
-        setPostTitle(title || 'UKENDT OPSLAG');
+        setPostTitle(title || 'Direkte besked');
 
-        // Avatars + emails
+        // Avatars + emails + names
         const uniqIds = Array.from(
           new Set<string>(
             rows
@@ -115,35 +197,33 @@ export default function ChatScreen() {
         if (uniqIds.length) {
           const { data: usersData } = await supabase
             .from('users')
-            .select('id, avatar_url, email')
+            .select('id, avatar_url, email, name')
             .in('id', uniqIds);
 
           const a: Record<string, string | null> = {};
           const e: Record<string, string | null> = {};
+          const n: Record<string, string | null> = {};
+
           for (const u of usersData || []) {
             e[u.id] = u.email ?? null;
-            if (u.avatar_url) {
-              const { data: urlObj } = supabase.storage.from('avatars').getPublicUrl(u.avatar_url);
-              a[u.id] = urlObj?.publicUrl || null;
-            } else {
-              a[u.id] = null;
-            }
+            n[u.id] = u.name ?? null;
+            a[u.id] = normalizeAvatarUrl(u.avatar_url);
           }
           setAvatars(a);
           setEmails(e);
+          setNames(n);
         }
       }
 
       setLoading(false);
-    };
+    })();
 
-    run();
     return () => {
       cancelled = true;
     };
   }, [threadId, postId, userId, otherUserId]);
 
-  // Realtime kun for denne tråd
+  /** Realtime på denne tråd */
   useEffect(() => {
     if (!threadId) return;
 
@@ -186,12 +266,16 @@ export default function ChatScreen() {
 
   const handleSend = async () => {
     const text = input.trim();
-    if (!text || !userId || !threadId || !otherUserId) return;
+    if (!text || !userId || !otherUserId) return;
+
+    // Sørg for at have et threadId (kan være genereret før første besked)
+    const tid = threadId || (await makeUuid());
+    if (!threadId) setThreadId(tid);
 
     const tempId = `temp-${Date.now()}`;
     const tempMsg: Message = {
       id: tempId,
-      thread_id: threadId,
+      thread_id: tid,
       sender_id: userId,
       receiver_id: otherUserId,
       text,
@@ -204,7 +288,7 @@ export default function ChatScreen() {
     const { data: inserted, error } = await supabase
       .from('messages')
       .insert({
-        thread_id: threadId,
+        thread_id: tid,
         sender_id: userId,
         receiver_id: otherUserId,
         text,
@@ -257,6 +341,8 @@ export default function ChatScreen() {
 
   const getInitial = (uid: string | null) => {
     if (!uid) return 'U';
+    const n = names[uid];
+    if (n && n.trim()) return n.trim()[0]!.toUpperCase();
     const email = emails[uid];
     if (email && email.length > 0) return email[0]!.toUpperCase();
     return 'U';
@@ -264,9 +350,28 @@ export default function ChatScreen() {
 
   const AvatarView = ({ uid }: { uid: string }) =>
     avatars[uid] ? (
-      <Image source={{ uri: avatars[uid] as string }} style={{ width: S.avatar, height: S.avatar, borderRadius: S.avatar / 2, marginHorizontal: 6, backgroundColor: '#ddd' }} />
+      <Image
+        source={{ uri: avatars[uid] as string }}
+        style={{
+          width: S.avatar,
+          height: S.avatar,
+          borderRadius: S.avatar / 2,
+          marginHorizontal: 6,
+          backgroundColor: '#ddd',
+        }}
+      />
     ) : (
-      <View style={{ width: S.avatar, height: S.avatar, borderRadius: S.avatar / 2, marginHorizontal: 6, backgroundColor: '#6337c4', alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          width: S.avatar,
+          height: S.avatar,
+          borderRadius: S.avatar / 2,
+          marginHorizontal: 6,
+          backgroundColor: '#6337c4',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
         <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: isTablet ? 24 : 22 }}>
           {getInitial(uid)}
         </Text>
@@ -287,7 +392,7 @@ export default function ChatScreen() {
 
         <View style={styles.headerTitleContainer}>
           <Text style={[styles.header, { fontSize: S.header }]} numberOfLines={2}>
-            {postTitle ? postTitle.toUpperCase() : 'UKENDT OPSLAG'}
+            {postTitle ? postTitle.toUpperCase() : 'DIREKTE BESKED'}
           </Text>
         </View>
 
@@ -375,7 +480,10 @@ export default function ChatScreen() {
           <TextInput
             value={input}
             onChangeText={setInput}
-            style={[styles.input, { fontSize: S.inputFont, minHeight: isTablet ? 48 : 44, maxHeight: isTablet ? 140 : 120 }]}
+            style={[
+              styles.input,
+              { fontSize: S.inputFont, minHeight: isTablet ? 48 : 44, maxHeight: isTablet ? 140 : 120 },
+            ]}
             placeholder="Skriv en besked…"
             placeholderTextColor="#999"
             multiline
@@ -393,116 +501,37 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#7C8996',
-    paddingTop: 42,
-  },
-
-  /* Topbar */
+  root: { flex: 1, backgroundColor: '#869FB9', paddingTop: 42 },
   headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingBottom: 8,
-    minHeight: 48,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: 14, paddingBottom: 8, minHeight: 48,
   },
   backBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#131921',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 3,
-    borderColor: '#ffffff',
+    width: 32, height: 32, borderRadius: 16, backgroundColor: '#131921',
+    alignItems: 'center', justifyContent: 'center',
   },
-  backBtnText: {
-    color: '#fff',
-    fontWeight: '800',
-    fontSize: 15,
-    lineHeight: 15,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  header: {
-    color: '#fff',
-    fontWeight: 'bold',
-    textAlign: 'center',
-    textTransform: 'uppercase',
-    paddingHorizontal: 2,
-    flexWrap: 'wrap',
-  },
+  backBtnText: { color: '#fff', fontWeight: '900', fontSize: 23, lineHeight: 23 },
+  headerTitleContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  header: { color: '#fff', fontWeight: 'bold', textAlign: 'center', textTransform: 'uppercase', paddingHorizontal: 2, flexWrap: 'wrap' },
 
-  /* Rækker */
-  row: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginBottom: 10,
-  },
+  row: { width: '100%', flexDirection: 'row', alignItems: 'flex-end', marginBottom: 10 },
   rowLeft: { justifyContent: 'flex-start' },
   rowRight: { justifyContent: 'flex-end' },
 
-  /* Boble (fælles) */
   bubble: {
     borderRadius: 18,
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 7,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 1,
+    shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1,
   },
   bubbleRight: { backgroundColor: '#131921' },
   bubbleLeft: { backgroundColor: '#fff' },
+  bubbleText: { color: '#222', flexShrink: 1, flexWrap: 'wrap' },
 
-  bubbleText: {
-    color: '#222',
-    flexShrink: 1,
-    flexWrap: 'wrap',
-  },
-
-  time: {
-    color: '#a1a1a1',
-    marginTop: 4,
-  },
+  time: { color: '#a1a1a1', marginTop: 4 },
   timeLeft: { alignSelf: 'flex-start', marginLeft: 6 },
   timeRight: { alignSelf: 'flex-end', marginRight: 6 },
 
-  /* Input */
-  inputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#131921',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  input: {
-    flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    marginRight: 9,
-    color: '#1e2330',
-    textAlignVertical: 'top',
-  },
-  sendBtn: {
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 50,
-    minHeight: 44,
-  },
-  sendBtnText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
-  },
+  inputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#131921', paddingHorizontal: 12, paddingVertical: 12, borderRadius: 8 },
+  input: { flex: 1, backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 16, marginRight: 9, color: '#1e2330', textAlignVertical: 'top' },
+  sendBtn: { alignItems: 'center', justifyContent: 'center', minWidth: 50, minHeight: 44 },
+  sendBtnText: { color: '#fff', fontWeight: 'bold', letterSpacing: 1, textTransform: 'uppercase' },
 });

@@ -1,10 +1,8 @@
 // hooks/useBeskeder.tsx
-
 import { useCallback, useEffect, useState } from 'react';
 import { Alert } from 'react-native';
 import { supabase } from '../utils/supabase';
 
-// Definerer en type for en besked-tråd for at gøre koden mere robust
 export type Thread = {
   id: string;
   thread_id: string;
@@ -12,7 +10,7 @@ export type Thread = {
   created_at: string;
   sender_id: string;
   receiver_id: string;
-  post_id: string;
+  post_id: string | null;
   posts: {
     id: string;
     overskrift: string;
@@ -20,32 +18,32 @@ export type Thread = {
   } | null;
 };
 
-/**
- * En custom hook, der håndterer al logik for Beskeder-skærmen.
- */
+function displayNameFromUser(u?: { name?: string | null; username?: string | null; email?: string | null }) {
+  const n = (u?.name || '').trim() || (u as any)?.username?.trim();
+  if (n) return n;
+  const email = u?.email || '';
+  return email ? email.split('@')[0] : 'Ukendt';
+}
+
 export default function useBeskeder() {
   const [userId, setUserId] = useState<string | null>(null);
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Hent brugerens ID, når hook'en initialiseres
+  // Hent brugerens ID
   useEffect(() => {
-    const getUser = async () => {
+    (async () => {
       const { data } = await supabase.auth.getUser();
-      if (data.user) {
-        setUserId(data.user.id);
-      } else {
-        setLoading(false); // Stop loading hvis ingen bruger er logget ind
-      }
-    };
-    getUser();
+      if (data?.user?.id) setUserId(data.user.id);
+      else setLoading(false);
+    })();
   }, []);
 
-  // Funktion til at hente og gruppere besked-tråde
   const fetchThreads = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
 
+    // Hent ALLE beskeder der involverer brugeren – seneste først
     const { data, error } = await supabase
       .from('messages')
       .select(`
@@ -58,47 +56,87 @@ export default function useBeskeder() {
     if (error) {
       Alert.alert('Fejl', 'Kunne ikke hente beskeder: ' + error.message);
       setThreads([]);
-    } else {
-      // Grupper beskeder for at vise kun den seneste fra hver tråd
-      const threadsMap: { [key: string]: Thread } = {};
-      (data || []).forEach((msg) => {
-        if (!threadsMap[msg.thread_id]) {
-          threadsMap[msg.thread_id] = msg as Thread;
-        }
-      });
-      setThreads(Object.values(threadsMap));
+      setLoading(false);
+      return;
     }
+
+    // Tag kun SENESTE besked per thread_id
+    const latestByThread: Record<string, Thread> = {};
+    for (const row of (data || []) as Thread[]) {
+      if (!latestByThread[row.thread_id]) latestByThread[row.thread_id] = row;
+    }
+    let latest = Object.values(latestByThread);
+
+    // Find direkte tråde (post_id = null) og slå "anden bruger" op
+    const directNeedingUser: Array<{ t: Thread; otherId: string }> = [];
+    for (const t of latest) {
+      if (!t.post_id) {
+        const otherId = t.sender_id === userId ? t.receiver_id : t.sender_id;
+        if (otherId) directNeedingUser.push({ t, otherId });
+      }
+    }
+
+    if (directNeedingUser.length) {
+      const uniqUserIds = Array.from(new Set(directNeedingUser.map(x => x.otherId)));
+      const { data: usersData, error: usersErr } = await supabase
+        .from('users')
+        .select('id, name, username, email')
+        .in('id', uniqUserIds);
+
+      // Map brugere for hurtig lookup
+      const usersMap = new Map<string, { id: string; name?: string | null; username?: string | null; email?: string | null }>();
+      if (!usersErr) {
+        (usersData || []).forEach(u => usersMap.set(u.id, u));
+      }
+
+      // Udfyld syntetisk posts-objekt, så UI kan vise titel/område som normalt
+      latest = latest.map(t => {
+        if (t.post_id) return t;
+        const otherId = t.sender_id === userId ? t.receiver_id : t.sender_id;
+        const u = usersMap.get(otherId || '');
+        const title = displayNameFromUser(u) || 'Direkte besked';
+        return {
+          ...t,
+          posts: {
+            id: otherId || '',
+            overskrift: title,     // ← bliver brugt som “titel” i din liste
+            omraade: '',           // ← ingen område for direkte chat
+          },
+        };
+      });
+    }
+
+    // Sørg for korrekt sortering (seneste øverst)
+    latest.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    setThreads(latest);
     setLoading(false);
   }, [userId]);
 
-  // Hent tråde, så snart vi har et bruger-ID
   useEffect(() => {
-    if (userId) {
-      fetchThreads();
-    }
+    if (userId) fetchThreads();
   }, [userId, fetchThreads]);
 
-  // Funktion til at slette en hel besked-tråd
+  // Slet hele samtalen (alle messages i thread_id)
   const deleteThread = (threadId: string) => {
     Alert.alert(
-      "Slet samtale",
-      "Er du sikker på, du vil slette denne samtale? Dette kan ikke fortrydes.",
+      'Slet samtale',
+      'Er du sikker på, du vil slette denne samtale? Dette kan ikke fortrydes.',
       [
-        { text: "Annuller", style: "cancel" },
+        { text: 'Annuller', style: 'cancel' },
         {
-          text: "Slet",
-          style: "destructive",
+          text: 'Slet',
+          style: 'destructive',
           onPress: async () => {
             const { error } = await supabase.from('messages').delete().eq('thread_id', threadId);
             if (error) {
               Alert.alert('Fejl', 'Kunne ikke slette samtalen: ' + error.message);
-            } else {
-              // Opdater UI ved at fjerne den slettede tråd fra den lokale state
-              setThreads(prevThreads => prevThreads.filter(t => t.thread_id !== threadId));
+              return;
             }
-          }
-        }
-      ]
+            setThreads(prev => prev.filter(t => t.thread_id !== threadId));
+          },
+        },
+      ],
     );
   };
 
@@ -107,6 +145,6 @@ export default function useBeskeder() {
     threads,
     loading,
     deleteThread,
-    refresh: fetchThreads, // Eksporter en funktion til at gen-hente
+    refresh: fetchThreads,
   };
 }

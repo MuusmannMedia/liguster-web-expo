@@ -203,8 +203,8 @@ const styles = StyleSheet.create({
   },
   backIcon: {
     position: 'absolute',
-    top: 50,
-    left: 16,
+    top: 45,
+    left: 25,
     zIndex: 99,
     width: 40,
     height: 40,
@@ -232,7 +232,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     width: 260,
     height: 48,
-    borderRadius: 10,
+    borderRadius: 40,
     paddingHorizontal: 14,
     marginBottom: 18,
     fontSize: 16,
@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
     width: 260,
     marginBottom: 18,
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 40,
     paddingRight: 8,
   },
   eye: { padding: 6 },
@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
   },
   button: {
     backgroundColor: '#ffffffff', // mørk blå baggrund
-    borderRadius: 10,
+    borderRadius: 40,
     width: 260,                 // samme bredde som inputfelterne
     height: 48,                 // samme højde som inputfelterne
     alignItems: 'center',

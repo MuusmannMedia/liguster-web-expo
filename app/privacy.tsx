@@ -16,7 +16,6 @@ import {
 export default function PrivacyPolicy() {
   const router = useRouter();
 
-  // Fallback inkl. trailing slash
   const privacyUrl =
     (Constants.expoConfig?.extra as any)?.privacyUrl ||
     "https://www.liguster-app.dk/privacy/";
@@ -47,7 +46,7 @@ export default function PrivacyPolicy() {
         </Head>
       )}
 
-      {/* Simpel tilbageknap på native */}
+      {/* Simpel topbar på native */}
       {Platform.OS !== "web" && (
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -57,55 +56,58 @@ export default function PrivacyPolicy() {
       )}
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Privatlivspolitik for Liguster</Text>
+        <Text style={styles.h1}>Privatlivspolitik for Liguster</Text>
         <Text style={styles.updated}>Senest opdateret: 4. august 2025</Text>
 
-        <Text style={styles.paragraph}>
+        <Text style={styles.p}>
           Denne privatlivspolitik beskriver vores politikker og procedurer for,
           hvordan vi indsamler, bruger og videregiver dine oplysninger, når du
           bruger tjenesten, samt dine rettigheder og hvordan loven beskytter dig.
         </Text>
 
-        <Text style={styles.paragraph}>
+        <Text style={styles.p}>
           Vi bruger dine personoplysninger til at levere og forbedre tjenesten.
           Ved at bruge tjenesten accepterer du, at oplysninger indsamles og bruges
           i overensstemmelse med denne privatlivspolitik.
         </Text>
 
-        <Text style={styles.section}>Kontakt</Text>
-        <Text style={styles.paragraph}>
-          Har du spørgsmål, kan du kontakte os på e-mail:
-          {" "}kontakt@liguster-app.dk
+        <Text style={styles.h2}>Kontakt</Text>
+        <Text style={styles.p}>
+          Har du spørgsmål, kan du kontakte os på e-mail:{" "}
+          <Text
+            style={styles.link}
+            onPress={() => WebBrowser.openBrowserAsync("mailto:kontakt@liguster-app.dk")}
+          >
+            kontakt@liguster-app.dk
+          </Text>
         </Text>
 
-        <TouchableOpacity onPress={openFullPolicy}>
-          <Text style={styles.link}>
-            Læs den fulde politik på liguster-app.dk/privacy
-          </Text>
-        </TouchableOpacity>
+        <Text style={[styles.link, { marginTop: 8 }]} onPress={openFullPolicy}>
+          Læs den fulde politik på liguster-app.dk/privacy
+        </Text>
+
+        <View style={{ height: 28 }} />
       </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#171C22" },
-  scroll: { flex: 1 },
-  container: { padding: 20, paddingBottom: 40 },
-
+  root: { flex: 1, backgroundColor: "#0F141A" },
   topBar: {
     paddingTop: 50,
     paddingHorizontal: 16,
     paddingBottom: 12,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "#333",
   },
   backBtn: { paddingVertical: 6 },
-  backText: { color: "#fff", fontSize: 16, fontWeight: "600" },
+  backText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
 
-  title: { fontSize: 22, fontWeight: "700", marginBottom: 10, color: "#fff" },
-  updated: { fontSize: 14, color: "#bbb", marginBottom: 20 },
-  section: { fontSize: 18, fontWeight: "600", marginTop: 20, marginBottom: 8, color: "#fff" },
-  paragraph: { fontSize: 14, color: "#ddd", marginBottom: 14, lineHeight: 20 },
-  link: { fontSize: 14, color: "#93c5fd", textDecorationLine: "underline", marginTop: 16 },
+  scroll: { flex: 1 },
+  container: { paddingHorizontal: 20, paddingTop: 6, paddingBottom: 24 },
+
+  h1: { color: "#FFFFFF", fontSize: 30, lineHeight: 36, fontWeight: "800", marginBottom: 8 },
+  updated: { color: "#C7CED6", fontSize: 16, marginBottom: 18 },
+  p: { color: "#E3E8EF", fontSize: 16, lineHeight: 24, marginBottom: 12 },
+  h2: { color: "#FFFFFF", fontSize: 22, lineHeight: 28, fontWeight: "800", marginTop: 8, marginBottom: 8 },
+  link: { color: "#6EA8FF", textDecorationLine: "underline", fontSize: 16 },
 });

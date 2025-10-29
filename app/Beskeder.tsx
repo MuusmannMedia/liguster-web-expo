@@ -25,7 +25,7 @@ type ThreadItem = {
   posts?: { overskrift?: string | null; omraade?: string | null } | null;
 };
 
-const BG = "#7C8996";
+const BG = "#869FB9";
 
 /* Typografi */
 const TITLE_FS = 20;

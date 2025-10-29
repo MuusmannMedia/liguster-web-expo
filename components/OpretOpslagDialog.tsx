@@ -8,7 +8,7 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
-  Image,
+  Image as RNImage,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -53,6 +53,7 @@ type SubmitData = {
   text: string;
   images?: string[] | null;
   image_url?: string | null;
+  image_paths?: string[] | null;
   latitude?: number | null;
   longitude?: number | null;
   kategori: string;
@@ -71,6 +72,7 @@ type Props = {
     image_url?: string | null;
     image_urls?: string[] | null;
     images?: string[] | null;
+    image_paths?: string[] | null; // ⬅️ vigtigt ved redigering
     kategori?: string;
     latitude?: number | null;
     longitude?: number | null;
@@ -84,21 +86,18 @@ type PickedAny   = NativePicked | WebPicked;
 /* ──────────────────────────────────────────────────────────────
    Hjælpere
 ────────────────────────────────────────────────────────────── */
-async function resizeFileToBlobWeb(file: File, maxWidth = 1000, quality = 0.50) {
+async function resizeFileToBlobWeb(file: File, maxWidth = 1000, quality = 0.5) {
   const previewUrl = URL.createObjectURL(file);
-  const imgEl = await new Promise<HTMLImageElement>((resolve, reject) => {
-    const i = new Image();
-    i.onload = () => resolve(i);
-    i.onerror = reject;
-    i.src = previewUrl;
-  });
+  const I = (globalThis as any).Image as { new(): HTMLImageElement };
+  const imgEl = new I();
+  await new Promise<void>((res, rej) => { imgEl.onload = () => res(); imgEl.onerror = rej; imgEl.src = previewUrl; });
+
   const scale = Math.min(1, maxWidth / (imgEl.width || maxWidth));
   const w = Math.round((imgEl.width || maxWidth) * scale);
   const h = Math.round((imgEl.height || maxWidth) * scale);
 
   const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = w; canvas.height = h;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas context fejlede");
   ctx.drawImage(imgEl, 0, 0, w, h);
@@ -123,9 +122,7 @@ async function tryGetLocation() {
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") return null;
-    const pos = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
+    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
     return { lat: pos.coords.latitude, lng: pos.coords.longitude };
   } catch {
     return null;
@@ -136,6 +133,18 @@ async function tryGetLocation() {
 function mkPath(userId: string) {
   return `posts/${userId}/post_${Date.now()}_${Math.floor(Math.random() * 1e6)}.jpg`;
 }
+
+/** Udled en bucket-path ud fra en public URL fra Supabase (hvis muligt) */
+function extractPathFromPublicUrl(url: string): string | null {
+  // Format: .../storage/v1/object/public/<bucket>/<path...>
+  const m = /\/storage\/v1\/object\/public\/([^/]+)\/(.+)$/.exec(url);
+  if (!m) return null;
+  const bucket = m[1];
+  const path = m[2];
+  return bucket === BUCKET ? path : null;
+}
+
+/** Returnerer { url, path } så vi kan gemme begge dele */
 async function uploadBase64ToSupabase(base64: string, userId: string) {
   const path = mkPath(userId);
   const { error } = await supabase.storage.from(BUCKET).upload(
@@ -145,7 +154,7 @@ async function uploadBase64ToSupabase(base64: string, userId: string) {
   );
   if (error) throw error;
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return data?.publicUrl ?? null;
+  return { url: data?.publicUrl ?? null, path };
 }
 async function uploadBlobToSupabase(blob: Blob, userId: string) {
   const path = mkPath(userId);
@@ -156,19 +165,16 @@ async function uploadBlobToSupabase(blob: Blob, userId: string) {
   );
   if (error) throw error;
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return data?.publicUrl ?? null;
+  return { url: data?.publicUrl ?? null, path };
 }
 
 /* ──────────────────────────────────────────────────────────────
-   Kategori dropdown (fixet overlay + tablet-størrelser)
+   Kategori dropdown
 ────────────────────────────────────────────────────────────── */
 function KategoriDropdown({
   selected,
   onSelect,
-}: {
-  selected: string;
-  onSelect: (c: string) => void;
-}) {
+}: { selected: string; onSelect: (c: string) => void; }) {
   const [open, setOpen] = useState(false);
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 768;
@@ -180,25 +186,14 @@ function KategoriDropdown({
 
   return (
     <>
-      <TouchableOpacity
-        style={styles.dropdownBtn}
-        onPress={() => setOpen(true)}
-        activeOpacity={0.8}
-      >
+      <TouchableOpacity style={styles.dropdownBtn} onPress={() => setOpen(true)} activeOpacity={0.8}>
         <Text style={selected ? styles.dropdownBtnText : styles.dropdownBtnPlaceholder}>
           {selected || "Vælg kategori"}
         </Text>
       </TouchableOpacity>
 
-      <Modal
-        visible={open}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setOpen(false)}
-      >
-        {/* Baggrund der kan lukkes ved tap */}
+      <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
         <Pressable style={styles.dropdownOverlay} onPress={() => setOpen(false)}>
-          {/* Selve boksen fanger touch, så tryk ikke bobler op til overlay */}
           <TouchableWithoutFeedback>
             <View style={[styles.dropdownList, { width: LIST_W, maxHeight: LIST_MAX_H }]}>
               <ScrollView bounces showsVerticalScrollIndicator>
@@ -209,18 +204,10 @@ function KategoriDropdown({
                       key={k}
                       onPress={() => { onSelect(k); setOpen(false); }}
                       activeOpacity={0.9}
-                      style={[
-                        styles.dropdownItem,
-                        { paddingVertical: ITEM_PAD_V },
-                        active && { backgroundColor: "#25489011" },
-                      ]}
+                      style={[styles.dropdownItem, { paddingVertical: ITEM_PAD_V }, active && { backgroundColor: "#25489011" }]}
                     >
                       <Text
-                        style={[
-                          styles.dropdownItemText,
-                          { fontSize: ITEM_FS },
-                          active && { color: "#254890", fontWeight: "bold" },
-                        ]}
+                        style={[styles.dropdownItemText, { fontSize: ITEM_FS }, active && { color: "#254890", fontWeight: "bold" }]}
                         numberOfLines={1}
                       >
                         {k}
@@ -258,7 +245,9 @@ export default function OpretOpslagDialog({ visible, onClose, onSubmit, initialV
   const [lat, setLat] = useState<number | null | undefined>(undefined);
   const [lng, setLng] = useState<number | null | undefined>(undefined);
 
-  /* Hent bruger-id til filstier */
+  // vi gemmer de eksisterende paths ved redigering, så vi kan reproducere dem
+  const existingPathsRef = useRef<string[] | null>(null);
+
   useEffect(() => {
     let active = true;
     (async () => {
@@ -268,7 +257,6 @@ export default function OpretOpslagDialog({ visible, onClose, onSubmit, initialV
     return () => { active = false; };
   }, []);
 
-  /* Init når modal åbner */
   useEffect(() => {
     if (!visible) return;
     setId(initialValues?.id);
@@ -278,6 +266,7 @@ export default function OpretOpslagDialog({ visible, onClose, onSubmit, initialV
     setKategori(initialValues?.kategori || "");
     setLat(initialValues?.latitude ?? null);
     setLng(initialValues?.longitude ?? null);
+    existingPathsRef.current = initialValues?.image_paths ?? null;
 
     const existing =
       initialValues?.images && initialValues.images.length > 0 ? initialValues.images :
@@ -318,7 +307,6 @@ export default function OpretOpslagDialog({ visible, onClose, onSubmit, initialV
     try {
       const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (perm.status !== "granted") throw new Error("Manglende tilladelse til fotobibliotek.");
-
       const selectionLimit = Math.max(1, MAX_IMAGES - picked.length);
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -410,22 +398,37 @@ export default function OpretOpslagDialog({ visible, onClose, onSubmit, initialV
 
     setUploading(true);
     try {
-      // Upload “nye” billeder
+      // Upload “nye” billeder + rekonstruér paths for eksisterende URLs
       const urls: string[] = [];
+      const paths: string[] = [];
+
       for (const item of picked) {
-        const isUrl = /^https?:\/\//i.test(item.previewUri);
-        if (isUrl) {
+        const isHttpUrl = /^https?:\/\//i.test(item.previewUri);
+
+        if (isHttpUrl) {
           urls.push(item.previewUri);
+          // forsøg at udlede path fra public URL (kun hvis det er vores bucket)
+          const maybePath = extractPathFromPublicUrl(item.previewUri);
+          if (maybePath) paths.push(maybePath);
           continue;
         }
+
         if (item._kind === "native") {
-          const u = await uploadBase64ToSupabase((item as NativePicked).base64, currentUserId);
-          if (u) urls.push(u);
+          const r = await uploadBase64ToSupabase((item as NativePicked).base64, currentUserId);
+          if (r.url) urls.push(r.url);
+          if (r.path) paths.push(r.path);
         } else {
-          const u = await uploadBlobToSupabase((item as WebPicked).blob, currentUserId);
-          if (u) urls.push(u);
+          const r = await uploadBlobToSupabase((item as WebPicked).blob, currentUserId);
+          if (r.url) urls.push(r.url);
+          if (r.path) paths.push(r.path);
         }
       }
+
+      // Hvis vi redigerer, og nogle tidligere billeder ikke længere er i listen,
+      // bliver deres paths automatisk droppet. Det er fint: prune-funktionen
+      // sletter kun filer for rækker der er helt udløbet/slettet.
+      // (Hvis du vil slette “fjernede” filer straks ved redigering, kan vi lave en separat cleanup.)
+
       const primary = urls[0] ?? null;
 
       // Lokation
@@ -443,6 +446,7 @@ export default function OpretOpslagDialog({ visible, onClose, onSubmit, initialV
         text: beskrivelse,
         images: urls.length ? urls : null,
         image_url: primary,
+        image_paths: paths.length ? paths : null,
         latitude: latitude ?? null,
         longitude: longitude ?? null,
         kategori,
@@ -508,7 +512,7 @@ export default function OpretOpslagDialog({ visible, onClose, onSubmit, initialV
             <View style={[styles.thumbRow, { minHeight: thumbsSize }]}>
               {picked.map((p, idx) => (
                 <View key={idx} style={[styles.thumbBox, { width: thumbsSize, height: thumbsSize }]}>
-                  <Image source={{ uri: p.previewUri }} style={styles.thumb} />
+                  <RNImage source={{ uri: p.previewUri }} style={styles.thumb} />
                   <TouchableOpacity style={styles.removeBtn} onPress={() => removeAt(idx)} disabled={uploading}>
                     <Text style={styles.removeBtnText}>×</Text>
                   </TouchableOpacity>
@@ -597,28 +601,16 @@ const styles = StyleSheet.create({
   thumb: { width: "100%", height: "100%", borderRadius: 7 },
 
   addBtn: {
-    width: 62,
-    height: 62,
-    borderRadius: 7,
-    backgroundColor: "#f3f3f3",
-    borderWidth: 1,
-    borderColor: "#ddd",
-    alignItems: "center",
-    justifyContent: "center",
+    width: 62, height: 62, borderRadius: 7,
+    backgroundColor: "#f3f3f3", borderWidth: 1, borderColor: "#ddd",
+    alignItems: "center", justifyContent: "center",
   },
   addBtnText: { fontSize: 28, color: "#444" },
 
   removeBtn: {
-    position: "absolute",
-    top: -7,
-    right: -7,
-    backgroundColor: "#e85c5c",
-    borderRadius: 13,
-    width: 24,
-    height: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 2,
+    position: "absolute", top: -7, right: -7,
+    backgroundColor: "#e85c5c", borderRadius: 13, width: 24, height: 24,
+    alignItems: "center", justifyContent: "center", zIndex: 2,
   },
   removeBtnText: { color: "#fff", fontWeight: "bold" },
 
@@ -643,20 +635,8 @@ const styles = StyleSheet.create({
   dropdownBtnText: { color: "#000" },
   dropdownBtnPlaceholder: { color: "#999" },
 
-  dropdownOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.4)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16,
-  },
-  dropdownList: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    width: 250,
-    maxHeight: 300,
-    overflow: "hidden",
-  },
+  dropdownOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", alignItems: "center", padding: 16 },
+  dropdownList: { backgroundColor: "#fff", borderRadius: 10, width: 250, maxHeight: 300, overflow: "hidden" },
   dropdownItem: { paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#eee" },
   dropdownItemText: { fontSize: 16, color: "#0f172a" },
 });

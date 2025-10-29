@@ -299,7 +299,7 @@ export default function ImagesListScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#7C8996" }}>
+    <View style={{ flex: 1, backgroundColor: "#869FB9" }}>
       {/* Topbar */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -486,7 +486,7 @@ export default function ImagesListScreen() {
 
 /* -------------------- Styles -------------------- */
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#7C8996" },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#869FB9" },
 
   topBar: {
     flexDirection: "row",
@@ -495,29 +495,29 @@ const styles = StyleSheet.create({
     paddingTop: 42,
     paddingBottom: 8,
     alignItems: "center",
-    backgroundColor: "#7C8996",
+    backgroundColor: "#869FB9",
   },
   backBtn: {
     width: 34, height: 34, borderRadius: 17, backgroundColor: "#131921",
-    alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "#ffffff",
+    alignItems: "center", justifyContent: "center", borderWidth: 0, borderColor: "#ffffff",
   },
-  backBtnText: { color: "#fff", fontWeight: "800", fontSize: 16, lineHeight: 16 },
+  backBtnText: { color: "#fff", fontWeight: "900", fontSize: 30, lineHeight: 30 },
   title: { color: "#fff", fontWeight: "900", fontSize: 14 },
 
   row: {
     flexDirection: "row", alignItems: "center", backgroundColor: "#fff",
-    marginHorizontal: 14, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: "#eef1f4",
+    marginHorizontal: 14, padding: 12, borderRadius: 22, borderWidth: 0, borderColor: "#eef1f4",
     marginTop: 10, gap: 10,
   },
   rowTitle: { fontSize: 12, fontWeight: "800", color: "#131921" },
   rowMeta: { fontSize: 10, color: "#000", opacity: 0.7, marginTop: 2 },
-  thumb: { width: 76, height: 56, borderRadius: 8, backgroundColor: "#f0f0f0" },
+  thumb: { width: 76, height: 56, borderRadius: 14, backgroundColor: "#f0f0f0" },
   thumbPh: { alignItems: "center", justifyContent: "center" },
   countBadge: {
     backgroundColor: "#131921", color: "#fff", fontWeight: "900", fontSize: 12,
-    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, marginLeft: 8,
+    paddingHorizontal: 8, paddingVertical: 4, borderRadius: 18, marginLeft: 8,
   },
-  separator: { height: StyleSheet.hairlineWidth, backgroundColor: "#e9edf1" },
+  separator: { height: 0, backgroundColor: "transparent" },
 
   /* Fullscreen modal scaffolding */
   fullscreenWrap: { flex: 1, backgroundColor: "#000" },
@@ -543,7 +543,7 @@ const styles = StyleSheet.create({
   },
 
   /* Grid */
-  gridItem: { borderRadius: 12, overflow: "hidden", backgroundColor: "#111" },
+  gridItem: { borderRadius: 42, overflow: "hidden", backgroundColor: "#111" },
   gridImage: { width: "100%", height: "100%" },
 
   deletingOverlay: {

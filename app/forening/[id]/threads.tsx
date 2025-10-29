@@ -12,10 +12,14 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  View
+  View,
+  useWindowDimensions,
 } from "react-native";
 import { useSession } from "../../../hooks/useSession";
 import { supabase } from "../../../utils/supabase";
+
+/** Afrundinger (samme som events) */
+const RADII = { sm: 10, md: 14, lg: 18, xl: 22 };
 
 /** DB rows */
 type ThreadRow = {
@@ -76,6 +80,12 @@ export default function ThreadsScreen() {
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [creatingThread, setCreatingThread] = useState(false);
   const [newThreadTitle, setNewThreadTitle] = useState("");
+
+  // Tablet vs. mobil
+  const { width, height } = useWindowDimensions();
+  const isTablet =
+    (Platform.OS === "ios" && (Platform as any)?.isPad) || Math.min(width, height) >= 768;
+  const styles = isTablet ? tabletStyles : mobileStyles;
 
   // Navneopslag
   const nameFromMembers = useMemo(() => {
@@ -308,7 +318,7 @@ export default function ThreadsScreen() {
     ]);
   };
 
-  /** (Valgfrit) Slet enkeltbeskeder i modal (kræver policies i SQL pkt. 4) */
+  /** (Valgfrit) Slet enkeltbeskeder i modal */
   const canDeleteMsg = (m: UiMsg) => amAdmin || m.user?.id === userId;
   const deleteMessage = (m: UiMsg) => {
     if (!canDeleteMsg(m)) return;
@@ -398,6 +408,10 @@ export default function ThreadsScreen() {
                 </View>
               );
             }}
+            // 🔹 Skillelinje mellem hver tråd (mobil + tablet)
+            ItemSeparatorComponent={() => (
+              <View style={{ height: StyleSheet.hairlineWidth, backgroundColor: "#e9edf1", marginLeft: 0 }} />
+            )}
           />
         )}
       </View>
@@ -477,11 +491,11 @@ export default function ThreadsScreen() {
   );
 }
 
-/** Styles (samme som hos dig) */
-const styles = StyleSheet.create({
+/** Styles — mobil */
+const mobileStyles = StyleSheet.create({
   mainContainer: {
     flex: 1,
-    backgroundColor: "#7C8996",
+    backgroundColor: "#869FB9",
   },
   center: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#7C8996" },
 
@@ -493,39 +507,62 @@ const styles = StyleSheet.create({
     paddingTop: 42,
     paddingBottom: 8,
     alignItems: "center",
-    backgroundColor: "#7C8996",
+    backgroundColor: "#869FB9",
   },
   backBtn: {
-    width: 34, height: 34, borderRadius: 17, backgroundColor: "#131921",
-    alignItems: "center", justifyContent: "center", borderWidth: 3, borderColor: "#ffffff",
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: "#131921",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 0,
+    borderColor: "#ffffff",
   },
-  backBtnText: { color: "#fff", fontWeight: "800", fontSize: 16, lineHeight: 16 },
+  backBtnText: { color: "#fff", fontWeight: "900", fontSize: 30, lineHeight: 30 },
 
   /* Sektioner */
   section: {
-    marginTop: 12, marginHorizontal: 14, backgroundColor: "#FFFFFF", borderRadius: 14, padding: 12,
-    borderWidth: 1, borderColor: "#eef1f4",
+    marginTop: 12,
+    marginHorizontal: 14,
+    backgroundColor: "#FFFFFF",
+    borderRadius: RADII.xl,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#eef1f4",
   },
   sectionMuted: { marginTop: 4, color: "#000", fontSize: 12, opacity: 0.7 },
 
   /* Opret tråd */
   threadCreateRow: { flexDirection: "row", gap: 8 },
   threadInput: {
-    flex: 1, borderWidth: 1, borderColor: "#e5e8ec", borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: 10, color: "#000", backgroundColor: "#fafafa",
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#e5e8ec",
+    borderRadius: RADII.xl,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: "#000",
+    backgroundColor: "#fafafa",
   },
-  threadCreateBtn: { backgroundColor: "#131921", borderRadius: 10, paddingHorizontal: 14, justifyContent: "center" },
+  threadCreateBtn: {
+    backgroundColor: "#131921",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+  },
   threadCreateText: { color: "#fff", fontWeight: "800" },
 
-  /* Liste element */
-  threadItemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 10 },
+  /* Liste element (mobil) */
+  threadItemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12 },
   threadItemLeft: { flex: 1 },
-  threadTitle: { fontSize: 12, fontWeight: "800", color: "#131921" },
-  threadMeta: { fontSize: 10, color: "#000", opacity: 0.6, marginTop: 2 },
+  threadTitle: { fontSize: 14, fontWeight: "800", color: "#131921" },
+  threadMeta: { fontSize: 11, color: "#000", opacity: 0.6, marginTop: 2 },
+
   iconDeleteBtn: {
     backgroundColor: "#000",
-    borderRadius: 8,
-    width: 32,
+    borderRadius: 999,
+    width: 28,
     height: 28,
     alignItems: "center",
     justifyContent: "center",
@@ -538,28 +575,37 @@ const styles = StyleSheet.create({
   /* Modal */
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.90)", alignItems: "center", justifyContent: "center", padding: 18 },
   threadModalCard: {
-    width: "100%", maxWidth: 640, height: "86%", backgroundColor: "#fff", borderRadius: 16,
-    borderWidth: 1, borderColor: "#e9edf1", overflow: "hidden",
+    width: "100%",
+    maxWidth: 640,
+    height: "86%",
+    backgroundColor: "#fff",
+    borderRadius: RADII.xl,
+    borderWidth: 1,
+    borderColor: "#e9edf1",
+    overflow: "hidden",
   },
   threadModalHeader: {
-    padding: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#e9edf1",
-    flexDirection: "row", alignItems: "center",
+    padding: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#e9edf1",
+    flexDirection: "row",
+    alignItems: "center",
   },
-  threadModalTitle: { flex: 1, fontSize: 16, fontWeight: "800", color: "#131921" },
+  threadModalTitle: { flex: 1, fontSize: 20, fontWeight: "800", color: "#131921" },
   modalCloseBtn: {
-    backgroundColor: "#e9edf1",
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    backgroundColor: "#131921",
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
   },
-  modalCloseText: { color: "#131921", fontWeight: "900", fontSize: 16 },
+  modalCloseText: { color: "#ffffffff", fontWeight: "900", fontSize: 18 },
 
   threadModalBody: { flex: 1, backgroundColor: "#fff" },
 
   msgRow: { marginBottom: 10, paddingHorizontal: 6 },
   msgBubble: {
     backgroundColor: "#f4f6f8",
-    borderRadius: 10,
+    borderRadius: RADII.xl,
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderWidth: 1,
@@ -570,14 +616,48 @@ const styles = StyleSheet.create({
   msgTime: { fontSize: 10, color: "#000", opacity: 0.6, marginTop: 2 },
 
   msgInputRow: {
-    flexDirection: "row", gap: 8, padding: 12,
-    borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#e9edf1", backgroundColor: "#fff",
+    flexDirection: "row",
+    gap: 8,
+    padding: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "#e9edf1",
+    backgroundColor: "#fff",
   },
   msgInput: {
-    flex: 1, borderWidth: 1, borderColor: "#e5e8ec", borderRadius: 10,
-    paddingHorizontal: 12, paddingVertical: Platform.OS === "ios" ? 12 : 8,
-    color: "#000", backgroundColor: "#fafafa",
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#e5e8ec",
+    borderRadius: RADII.xl,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === "ios" ? 12 : 8,
+    color: "#000",
+    backgroundColor: "#fafafa",
   },
-  msgSendBtn: { backgroundColor: "#131921", borderRadius: 10, paddingHorizontal: 16, justifyContent: "center" },
+  msgSendBtn: {
+    backgroundColor: "#131921",
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    justifyContent: "center",
+  },
   msgSendText: { color: "#fff", fontWeight: "800" },
+});
+
+/** Styles — tablet (større typografi i trådliste + lidt mere luft) */
+const tabletStyles = StyleSheet.create({
+  ...mobileStyles,
+
+  /* Sektioner lidt mere luft på tablet */
+  section: {
+    ...mobileStyles.section,
+    marginHorizontal: 16,
+    padding: 14,
+  },
+
+  /* Liste element (tablet) – større tekst */
+  threadItemRow: { flexDirection: "row", alignItems: "center", paddingVertical: 14 },
+  threadTitle: { fontSize: 18, fontWeight: "800", color: "#131921" },
+  threadMeta: { fontSize: 13, color: "#000", opacity: 0.6, marginTop: 4 },
+
+  /* Modal titel en anelse større på tablet */
+  threadModalTitle: { flex: 1, fontSize: 22, fontWeight: "800", color: "#131921" },
 });

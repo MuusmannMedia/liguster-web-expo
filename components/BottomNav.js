@@ -45,7 +45,7 @@ export default function BottomNav() {
   return (
     <View style={styles.nav}>
       <View style={styles.row}>
-        <Btn to="/Nabolag" label="NABOLAG" />
+        <Btn to="/Opslag" label="OPSLAG" />
         <Btn to="/ForeningerScreen" label="FORENING" />
         <Btn to="/Beskeder" label="BESKEDER" />
       </View>
@@ -65,8 +65,8 @@ export default function BottomNav() {
 const styles = StyleSheet.create({
   nav: {
     backgroundColor: '#171C22',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 40,
+    borderTopRightRadius: 40,
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   active: {
     backgroundColor: '#fff',
     color: '#171C22',
-    borderRadius: 8,
+    borderRadius: 18,
     fontWeight: 'bold',
   },
   activeMig: {

@@ -1,5 +1,5 @@
 // app/Nabolag.tsx
-import React, { useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -21,12 +21,13 @@ import BottomNav from "../components/BottomNav";
 import OpretOpslagDialog from "../components/OpretOpslagDialog";
 import OpslagDetaljeModal from "../components/OpslagDetaljeModal";
 import SvarModal from "../components/SvarModal";
-import { Post, useNabolag } from "../hooks/useNabolag";
+import { Post, useOpslag } from "../hooks/useOpslag";
+import { useHydrationGate } from "../hooks/useHydrationGate";
 import { supabase } from "../utils/supabase";
 
 /* ───────── theme ───────── */
 const COLORS = {
-  bg: "#7C8996",
+  bg: "#869FB9",
   text: "#131921",
   white: "#fff",
   blue: "#131921",
@@ -34,7 +35,7 @@ const COLORS = {
   grayText: "#666",
   fieldBorder: "#c7ced6",
 };
-const RADII = { sm: 8, md: 10, lg: 14, xl: 18 };
+const RADII = { sm: 14, md: 18, lg: 24, xl: 28, full: 999 };
 const SHADOW = {
   card: {
     shadowColor: "#000",
@@ -52,42 +53,12 @@ const SHADOW = {
   },
 };
 
-/* ─────────────────────────────
-   LAYOUT-VARIABLER (nemme at tweake)
-   Brug disse til at styre layout per enhedstype.
-   ───────────────────────────── */
-const BREAKPOINTS = {
-  LARGE_PHONE_MIN_WIDTH: 430, // iPhone Pro Max = 430dp (logisk bredde)
-  TABLET_MIN_WIDTH: 768,
-  WIDE_GRID_MIN_WIDTH: 900, // når vi vil have 3 kolonner
-};
+/* ───────── layout ───────── */
+const BREAKPOINTS = { LARGE_PHONE_MIN_WIDTH: 430, TABLET_MIN_WIDTH: 768, WIDE_GRID_MIN_WIDTH: 900 };
 
-// Lille mobil (smaller than 430dp)
-const SMALL_PHONE = {
-  NUM_COLS: 1,
-  H_PADDING: 14,
-  GRID_GAP: 18,
-  CARD_BOTTOM_MARGIN: 18,
-  IMAGE_HEIGHT: 250,
-};
-
-// Stor mobil (≥ 430dp og < 768dp)
-const LARGE_PHONE = {
-  NUM_COLS: 1, // hold én kolonne på store mobiler
-  H_PADDING: 14,
-  GRID_GAP: 18,
-  CARD_BOTTOM_MARGIN: 20,
-  IMAGE_HEIGHT: 330,
-};
-
-// Tablet (≥ 768dp)
-const TABLET = {
-  H_PADDING: 14,
-  GRID_GAP: 18,
-  CARD_BOTTOM_MARGIN: 22,
-  IMAGE_HEIGHT: 220,
-  CARD_HEIGHT: 350, // fast korthøjde for ens korthøjde på tablet
-};
+const SMALL_PHONE = { NUM_COLS: 1, H_PADDING: 14, GRID_GAP: 18, CARD_BOTTOM_MARGIN: 18, IMAGE_HEIGHT: 250 };
+const LARGE_PHONE = { NUM_COLS: 1, H_PADDING: 14, GRID_GAP: 18, CARD_BOTTOM_MARGIN: 20, IMAGE_HEIGHT: 330 };
+const TABLET = { H_PADDING: 14, GRID_GAP: 18, CARD_BOTTOM_MARGIN: 22, IMAGE_HEIGHT: 220, CARD_HEIGHT: 350 };
 
 /* ───────── dialogs ───────── */
 function RadiusDialog({
@@ -139,7 +110,7 @@ function KategoriDialog({
   onClose: () => void;
   onChange: (v: string | null) => void;
 }) {
-  const { KATEGORIER } = require("../hooks/useNabolag");
+  const { KATEGORIER } = require("../hooks/useOpslag");
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={dialogStyles.overlay}>
@@ -166,8 +137,45 @@ function KategoriDialog({
   );
 }
 
+/* ───────── PostCard (ingen lazy) ───────── */
+const PostCard = React.memo(function PostCard({
+  item,
+  imageHeight,
+  onPress,
+}: {
+  item: Post;
+  imageHeight: number;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.87}>
+      <View style={styles.card}>
+        {!!item.image_url && (
+          <Image source={{ uri: item.image_url }} style={[styles.cardImage, { height: imageHeight }]} />
+        )}
+
+        {!!item.kategori && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{item.kategori}</Text>
+          </View>
+        )}
+
+        <Text style={styles.cardTitle} numberOfLines={1} ellipsizeMode="tail">
+          {item.overskrift}
+        </Text>
+        <Text style={styles.cardTeaser} numberOfLines={1} ellipsizeMode="tail">
+          {item.text}
+        </Text>
+        <Text style={styles.cardPlace} numberOfLines={1} ellipsizeMode="tail">
+          {item.omraade}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
+});
+
 /* ───────── screen ───────── */
-export default function Nabolag() {
+export default function Opslag() {
   const {
     userId,
     userLocation,
@@ -182,8 +190,28 @@ export default function Nabolag() {
     setKategoriFilter,
     onRefresh,
     createPost,
-    distanceInKm,
-  } = useNabolag();
+    requestLocationOnce,
+  } = useOpslag();
+
+  const { runAppHydrationOnce } = useHydrationGate();
+  const firstHydrationDone = useRef(false);
+
+  // Første data-load efter login – efter UI er tegnet
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (firstHydrationDone.current) return;
+      await runAppHydrationOnce(async () => {
+        if (!cancelled) {
+          await onRefresh();
+          firstHydrationDone.current = true;
+        }
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [runAppHydrationOnce, onRefresh]);
 
   const [opretVisible, setOpretVisible] = useState(false);
   const [detaljeVisible, setDetaljeVisible] = useState(false);
@@ -199,10 +227,9 @@ export default function Nabolag() {
   const isTablet = width >= BREAKPOINTS.TABLET_MIN_WIDTH;
   const isLargePhone = !isTablet && width >= BREAKPOINTS.LARGE_PHONE_MIN_WIDTH;
 
-  // Kolonner
-  const NUM_COLS = isTablet ? (width >= BREAKPOINTS.WIDE_GRID_MIN_WIDTH ? 3 : 2) : isLargePhone ? LARGE_PHONE.NUM_COLS : SMALL_PHONE.NUM_COLS;
+  const NUM_COLS =
+    isTablet ? (width >= BREAKPOINTS.WIDE_GRID_MIN_WIDTH ? 3 : 2) : isLargePhone ? LARGE_PHONE.NUM_COLS : SMALL_PHONE.NUM_COLS;
 
-  // Gitterafstand/padding
   const GRID_GAP = isTablet ? TABLET.GRID_GAP : isLargePhone ? LARGE_PHONE.GRID_GAP : SMALL_PHONE.GRID_GAP;
   const H_PADDING = isTablet ? TABLET.H_PADDING : isLargePhone ? LARGE_PHONE.H_PADDING : SMALL_PHONE.H_PADDING;
 
@@ -210,9 +237,7 @@ export default function Nabolag() {
   const isGrid = NUM_COLS > 1;
   const itemWidth = isGrid ? (INNER_WIDTH - GRID_GAP * (NUM_COLS - 1)) / NUM_COLS : "100%";
 
-  // Kort/billede-højder
   const imageHeight = isTablet ? TABLET.IMAGE_HEIGHT : isLargePhone ? LARGE_PHONE.IMAGE_HEIGHT : SMALL_PHONE.IMAGE_HEIGHT;
-
   const CARD_H = isTablet ? TABLET.CARD_HEIGHT : undefined;
   const CARD_BOTTOM_MARGIN = isTablet ? TABLET.CARD_BOTTOM_MARGIN : isLargePhone ? LARGE_PHONE.CARD_BOTTOM_MARGIN : SMALL_PHONE.CARD_BOTTOM_MARGIN;
 
@@ -226,14 +251,12 @@ export default function Nabolag() {
   const [headerHeight, setHeaderHeight] = useState(0);
   const scrollY = useRef(new Animated.Value(0)).current;
 
-  // ignorér negativ scroll (pull-to-refresh)
   const negativePart = scrollY.interpolate({
     inputRange: [-200, 0],
     outputRange: [-200, 0],
     extrapolate: "clamp",
   });
   const nonNegativeY = Animated.subtract(scrollY, negativePart);
-
   const clamped = Animated.diffClamp(nonNegativeY, 0, Math.max(1, headerHeight));
   const headerTranslateY = clamped.interpolate({
     inputRange: [0, headerHeight],
@@ -246,6 +269,44 @@ export default function Nabolag() {
   // Højde på BottomNav
   const BOTTOM_NAV_H = 86;
   const bottomSpacer = BOTTOM_NAV_H + insets.bottom + 14;
+
+  // Lokations-nudge (vises kun når vi mangler lokation)
+  const showLocationNudge = !userLocation;
+
+  // Busy-state til lokationsknap
+  const [locBusy, setLocBusy] = useState(false);
+  const handleAskLocation = useCallback(async () => {
+    if (locBusy) return;
+    setLocBusy(true);
+    try {
+      await requestLocationOnce();
+    } finally {
+      setLocBusy(false);
+    }
+  }, [locBusy, requestLocationOnce]);
+
+  // Memoized helpers til FlatList
+  const keyExtractor = useCallback((item: Post) => item.id, []);
+  const renderItem = useCallback(
+    ({ item, index }: { item: Post; index: number }) => (
+      <View
+        style={{
+          width: isGrid ? (itemWidth as number) : "100%",
+          marginBottom: index === filteredPosts.length - 1 ? 0 : CARD_BOTTOM_MARGIN,
+        }}
+      >
+        <PostCard
+          item={item}
+          imageHeight={imageHeight}
+          onPress={() => {
+            setValgtOpslag(item);
+            setDetaljeVisible(true);
+          }}
+        />
+      </View>
+    ),
+    [filteredPosts.length, isGrid, itemWidth, CARD_BOTTOM_MARGIN, imageHeight]
+  );
 
   return (
     <View style={styles.root}>
@@ -284,6 +345,34 @@ export default function Nabolag() {
               <Text style={styles.radiusBtnText}>{radius} km</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Nudge for lokation */}
+          {showLocationNudge && (
+            <View style={{ marginTop: 10 }}>
+              <TouchableOpacity
+                onPress={handleAskLocation}
+                disabled={locBusy}
+                style={{
+                  backgroundColor: "#0f172a",
+                  paddingVertical: 12,
+                  paddingHorizontal: 18,
+                  borderRadius: RADII.full,
+                  opacity: locBusy ? 0.7 : 1,
+                }}
+                activeOpacity={0.9}
+                accessibilityRole="button"
+                accessibilityLabel="Brug min lokation"
+              >
+                {locBusy ? (
+                  <ActivityIndicator />
+                ) : (
+                  <Text style={{ color: "#fff", fontWeight: "800", textAlign: "center" }}>
+                    Brug min lokation for nærmeste opslag
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
         </SafeAreaView>
       </Animated.View>
 
@@ -295,68 +384,33 @@ export default function Nabolag() {
           <Animated.FlatList
             data={filteredPosts}
             key={NUM_COLS}
-            keyExtractor={(item) => item.id}
+            keyExtractor={keyExtractor}
             style={{ width: "100%" }}
-            contentContainerStyle={{
-              paddingTop: 8,
-              paddingBottom: bottomSpacer,
-            }}
+            contentContainerStyle={{ paddingTop: 8, paddingBottom: bottomSpacer }}
             ListHeaderComponent={<View style={{ height: listPaddingTop }} />}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             numColumns={NUM_COLS}
             columnWrapperStyle={isGrid ? { gap: GRID_GAP } : undefined}
-            renderItem={({ item, index }) => (
-              <TouchableOpacity
-                onPress={() => {
-                  setValgtOpslag(item);
-                  setDetaljeVisible(true);
-                }}
-                style={{
-                  width: isGrid ? (itemWidth as number) : "100%",
-                  marginBottom: index === filteredPosts.length - 1 ? 0 : CARD_BOTTOM_MARGIN,
-                }}
-                activeOpacity={0.87}
-              >
-                <View style={[styles.card, CARD_H ? { height: CARD_H, overflow: "hidden" } : null]}>
-                  {!!item.image_url && <Image source={{ uri: item.image_url }} style={[styles.cardImage, { height: imageHeight }]} />}
-                  {!!item.kategori && (
-                    <View style={styles.badge}>
-                      <Text style={styles.badgeText}>{item.kategori}</Text>
-                    </View>
-                  )}
-
-                  {/* Overskrift – maks 1 linje */}
-                  <Text style={styles.cardTitle} numberOfLines={1} ellipsizeMode="tail">
-                    {item.overskrift}
-                  </Text>
-
-                  {/* Brødtekst/teaser – maks 1 linje */}
-                  <Text style={styles.cardTeaser} numberOfLines={1} ellipsizeMode="tail">
-                    {item.text}
-                  </Text>
-
-                  {/* By + postnummer (placering) */}
-                  <Text style={styles.cardPlace} numberOfLines={1} ellipsizeMode="tail">
-                    {item.omraade}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
+            renderItem={renderItem}
             ListEmptyComponent={<Text style={[styles.emptyText, { paddingTop: listPaddingTop }]}>Ingen opslag fundet.</Text>}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.blue]} />}
             onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
               useNativeDriver: true,
-              // dismiss tastatur når man scroller – også hvis man starter i "tomme" områder
               listener: () => Keyboard.dismiss(),
             })}
             scrollEventThrottle={16}
             bounces
             alwaysBounceVertical
             overScrollMode="always"
-            // vigtigt: hele listeområdet er scrollbart, også mellem kortene
             scrollIndicatorInsets={{ top: listPaddingTop, bottom: bottomSpacer }}
             contentInsetAdjustmentBehavior="never"
+            // (bevar rimelig aggressiv render for performance)
+            windowSize={8}
+            initialNumToRender={10}
+            maxToRenderPerBatch={10}
+            updateCellsBatchingPeriod={40}
+            removeClippedSubviews={false}
           />
         )}
       </Animated.View>
@@ -368,7 +422,6 @@ export default function Nabolag() {
         currentUserId={userId}
         onClose={() => setDetaljeVisible(false)}
         onSendSvar={() => {
-          // Åbn kun svar, hvis det IKKE er eget opslag
           if (!valgtOpslag || !userId) return;
           if (valgtOpslag.user_id === userId) {
             Alert.alert("Kan ikke svare", "Du kan ikke svare på dit eget opslag.");
@@ -384,14 +437,11 @@ export default function Nabolag() {
         onClose={() => setSvarVisible(false)}
         onSend={async (svarTekst) => {
           if (!valgtOpslag || !userId || !valgtOpslag.user_id) return;
-
-          // Ekstra sikkerhed: blokér send til dig selv
           if (valgtOpslag.user_id === userId) {
             setSvarVisible(false);
             Alert.alert("Kan ikke svare", "Du kan ikke svare på dit eget opslag.");
             return;
           }
-
           const threadId = [userId, valgtOpslag.user_id].sort().join("_") + "_" + valgtOpslag.id;
           await supabase.from("messages").insert([
             {
@@ -406,7 +456,12 @@ export default function Nabolag() {
         }}
       />
 
-      <OpretOpslagDialog visible={opretVisible} onClose={() => setOpretVisible(false)} onSubmit={handleOpretOpslag} currentUserId={userId} />
+      <OpretOpslagDialog
+        visible={opretVisible}
+        onClose={() => setOpretVisible(false)}
+        onSubmit={handleOpretOpslag}
+        currentUserId={userId}
+      />
 
       <RadiusDialog visible={radiusVisible} value={radius} onClose={() => setRadiusVisible(false)} onChange={handleRadiusChange} />
       <KategoriDialog visible={kategoriVisible} value={kategoriFilter} onClose={() => setKategoriVisible(false)} onChange={setKategoriFilter} />
@@ -425,9 +480,11 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
+    borderBottomLeftRadius: 40,
+    borderBottomRightRadius: 40,
     backgroundColor: COLORS.bg,
     paddingTop: 8,
-    paddingBottom: 10,
+    paddingBottom: 20,
     zIndex: 20,
   },
 
@@ -437,13 +494,11 @@ const styles = StyleSheet.create({
   primaryCta: {
     width: "100%",
     backgroundColor: COLORS.blue,
-    borderRadius: RADII.sm,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
+    borderRadius: RADII.full, // pill
+    paddingVertical: 14,
+    paddingHorizontal: 20,
     marginTop: 10,
     alignItems: "center",
-    borderWidth: 3,
-    borderColor: COLORS.white,
     ...SHADOW.lift,
   },
   primaryCtaText: { color: COLORS.white, fontSize: 17, fontWeight: "bold", letterSpacing: 1 },
@@ -459,56 +514,56 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     backgroundColor: COLORS.white,
-    borderRadius: RADII.sm,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
+    borderRadius: RADII.full, // pill
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     fontSize: 15,
     color: COLORS.text,
-    borderWidth: 1.5,
     borderColor: COLORS.fieldBorder,
   },
   iconBtn: {
     height: 45,
     width: 45,
-    borderRadius: RADII.sm,
+    borderRadius: RADII.full, // circle
     backgroundColor: COLORS.blue,
-    borderWidth: 3,
-    borderColor: COLORS.white,
     alignItems: "center",
     justifyContent: "center",
     ...SHADOW.card,
   },
   iconBtnText: { fontSize: 18, color: COLORS.white, fontWeight: "bold", marginTop: -2 },
   radiusBtn: {
-    minWidth: 54,
+    minWidth: 60,
     height: 45,
-    paddingHorizontal: 14,
-    borderRadius: RADII.sm,
+    paddingHorizontal: 16,
+    borderRadius: RADII.full, // pill
     backgroundColor: COLORS.blue,
-    borderWidth: 3,
-    borderColor: COLORS.white,
     alignItems: "center",
     justifyContent: "center",
     ...SHADOW.card,
   },
   radiusBtnText: { color: COLORS.white, fontWeight: "bold", fontSize: 15, letterSpacing: 1 },
 
-  /* Cards */
+  /* Cards (runde hjørner) */
   card: {
     width: "100%",
     backgroundColor: COLORS.white,
-    borderRadius: RADII.lg,
-    padding: 12,
+    borderRadius: RADII.xl, // store, bløde hjørner
+    padding: 14,
     ...SHADOW.card,
   },
-  cardImage: { width: "100%", borderRadius: RADII.md, marginBottom: 10, height: 160 },
+  cardImage: {
+    width: "100%",
+    borderRadius: RADII.lg, // runde kanter på billedet
+    marginBottom: 10,
+    height: 160,
+  },
   badge: {
     alignSelf: "flex-start",
     backgroundColor: COLORS.blueTint,
-    borderRadius: RADII.sm,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    marginBottom: 7,
+    borderRadius: RADII.full, // pill
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 8,
   },
   badgeText: { color: COLORS.text, fontWeight: "bold", fontSize: 13 },
 
@@ -522,18 +577,24 @@ const styles = StyleSheet.create({
 
 const dialogStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: "rgba(20,30,40,0.60)", justifyContent: "center", alignItems: "center" },
-  dialog: { backgroundColor: COLORS.white, borderRadius: RADII.xl, padding: 22, width: 260, alignItems: "center" },
+  dialog: { backgroundColor: COLORS.white, borderRadius: RADII.xl, padding: 22, width: 280, alignItems: "center" },
   title: { fontSize: 18, fontWeight: "bold", color: COLORS.text, marginBottom: 15 },
   option: {
     paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: RADII.sm,
-    marginBottom: 7,
+    paddingHorizontal: 16,
+    borderRadius: RADII.full, // pill
+    marginBottom: 8,
     backgroundColor: "#f4f7fa",
-    width: 210,
+    width: 220,
     alignItems: "center",
   },
   selectedOption: { backgroundColor: COLORS.blueTint, borderColor: COLORS.blue, borderWidth: 3 },
-  closeBtn: { marginTop: 10, padding: 8 },
+  closeBtn: {
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: RADII.full, // pill
+    backgroundColor: "#eef2f6",
+  },
   closeBtnText: { color: COLORS.text, fontWeight: "bold" },
 });

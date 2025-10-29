@@ -18,7 +18,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { Post } from "../hooks/useNabolag";
+import { Post } from "../hooks/useOpslag";
 
 type Props = {
   visible: boolean;
@@ -146,8 +146,8 @@ export default function OpslagDetaljeModal({
   // Kopiér-til-clipboard med dynamisk import + fallback
   async function copyToClipboard(text: string): Promise<boolean> {
     try {
-      const Clipboard = await import("expo-clipboard");
-      await Clipboard.setStringAsync(text);
+      const { setStringAsync } = await import("expo-clipboard");
+      await setStringAsync(text);
       return true;
     } catch {
       return false;
@@ -159,7 +159,6 @@ export default function OpslagDetaljeModal({
     if (ok) {
       Alert.alert("Kopieret", "Link til opslaget er kopieret.");
     } else {
-      // Fallback: del linket
       try {
         await Share.share({ message: shareUrl, url: shareUrl });
       } catch {}
@@ -175,7 +174,7 @@ export default function OpslagDetaljeModal({
         title: opslag.overskrift,
       });
     } catch {
-      // bruger annullerede – intet alert nødvendigt
+      // user cancelled
     }
   };
 
@@ -359,7 +358,7 @@ export default function OpslagDetaljeModal({
 }
 
 /* ───────── styles ───────── */
-const SMALL_BTN_H = 34;          // ens højde for alle tre knapper
+const SMALL_BTN_H = 34; // ens højde for alle tre knapper
 const SMALL_BTN_RADIUS = 10;
 const SMALL_BTN_PAD_H = 12;
 
