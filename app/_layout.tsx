@@ -1,5 +1,5 @@
 // app/_layout.tsx  (WEB VERSION)
-
+export const unstable_settings = { prerender: false };
 import React from "react";
 import { Stack } from "expo-router";
 import { View, StyleSheet } from "react-native";
