@@ -15,7 +15,7 @@ import {
 import { useRouter, useLocalSearchParams } from "expo-router";
 import * as Linking from "expo-linking";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "../utils/supabase";
+import { supabase } from "../../utils/supabase";
 
 export const options = { headerShown: false };
 

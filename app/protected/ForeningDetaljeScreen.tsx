@@ -17,9 +17,9 @@ import {
 } from "react-native";
 
 // ✅ Korrekte stier ift. din struktur (hooks/, types/, utils/ er søster-mapper til app/)
-import { useSession } from "../hooks/useSession";
+import { useSession } from "../../hooks/useSession";
 import { Forening } from "../types/forening";
-import { supabase } from "../utils/supabase";
+import { supabase } from "../../utils/supabase";
 
 type MedlemsRow = {
   user_id: string;

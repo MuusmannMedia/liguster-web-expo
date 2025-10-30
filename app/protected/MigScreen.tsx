@@ -20,9 +20,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { decode } from 'base64-arraybuffer';
-import BottomNav from '../components/BottomNav';
-import { useProfile } from '../hooks/useProfile';
-import { supabase } from '../utils/supabase';
+import BottomNav from '../../components/BottomNav';
+import { useProfile } from "../../hooks/useProfile";
+import { supabase } from '../../utils/supabase';
 
 const PLACEHOLDER = 'https://placehold.co/250x250?text=Profil';
 

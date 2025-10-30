@@ -1,4 +1,4 @@
-// app/LoginScreen.tsx
+// app/public/LoginScreen.tsx
 import { useRouter } from "expo-router";
 import React, { useRef, useState } from "react";
 import {
@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "../utils/supabase";
+import { supabase } from "../../utils/supabase";
 
 export const options = { headerShown: false };
 
@@ -62,7 +62,7 @@ export default function LoginScreen() {
         password,
       });
       if (error) throw error;
-      router.replace("/Opslag");
+      router.replace("/protected/Opslag");
     } catch (e: any) {
       Alert.alert("Login fejlede", e?.message ?? "Prøv igen.");
     } finally {

@@ -22,7 +22,7 @@ export default function WebHeader() {
     return () => mq.removeEventListener?.("change", update);
   }, []);
 
-  const goHome = () => router.push(isAuthed ? "/(protected)/Nabolag" : "/");
+  const goHome = () => router.push(isAuthed ? "/protected/Nabolag" : "/");
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
@@ -55,11 +55,11 @@ export default function WebHeader() {
           {!loading &&
             (isAuthed ? (
               <>
-                <Link href="/(protected)/Nabolag" className="nav-link">Nabolag</Link>
-                <Link href="/(protected)/ForeningerScreen" className="nav-link">Forening</Link>
-                <Link href="/(protected)/Beskeder" className="nav-link">Beskeder</Link>
-                <Link href="/(protected)/MineOpslag" className="nav-link">Mine Opslag</Link>
-                <Link href="/(protected)/MigScreen" className="nav-link">Mig</Link>
+                <Link href="/protected/Nabolag" className="nav-link">Nabolag</Link>
+                <Link href="/protected/ForeningerScreen" className="nav-link">Forening</Link>
+                <Link href="/protected/Beskeder" className="nav-link">Beskeder</Link>
+                <Link href="/protected/MineOpslag" className="nav-link">Mine Opslag</Link>
+                <Link href="/protected/MigScreen" className="nav-link">Mig</Link>
                 <button className="btn-logout" onClick={signOut}>
                   <span className="btn-logout-txt">Log ud</span>
                 </button>
@@ -126,11 +126,11 @@ function MobileMenu({
           {!loading &&
             (isAuthed ? (
               <>
-                <Link href="/(protected)/Nabolag" className="menu-item" onClick={() => setOpen(false)}>Nabolag</Link>
-                <Link href="/(protected)/ForeningerScreen" className="menu-item" onClick={() => setOpen(false)}>Forening</Link>
-                <Link href="/(protected)/Beskeder" className="menu-item" onClick={() => setOpen(false)}>Beskeder</Link>
-                <Link href="/(protected)/MineOpslag" className="menu-item" onClick={() => setOpen(false)}>Mine Opslag</Link>
-                <Link href="/(protected)/MigScreen" className="menu-item" onClick={() => setOpen(false)}>Mig</Link>
+                <Link href="/protected/Nabolag" className="menu-item" onClick={() => setOpen(false)}>Nabolag</Link>
+                <Link href="/protected/ForeningerScreen" className="menu-item" onClick={() => setOpen(false)}>Forening</Link>
+                <Link href="/protected/Beskeder" className="menu-item" onClick={() => setOpen(false)}>Beskeder</Link>
+                <Link href="/protected/MineOpslag" className="menu-item" onClick={() => setOpen(false)}>Mine Opslag</Link>
+                <Link href="/protected/MigScreen" className="menu-item" onClick={() => setOpen(false)}>Mig</Link>
                 <button className="menu-cta" onClick={() => { setOpen(false); signOut(); }}>Log ud</button>
               </>
             ) : (

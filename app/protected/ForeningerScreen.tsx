@@ -1,4 +1,4 @@
-// app/ForeningerScreen.tsx
+// app/protected/ForeningerScreen.tsx
 import { Feather } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
@@ -19,10 +19,12 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import BottomNav from "../components/BottomNav";
-import { useAlleForeninger, useMineForeninger } from "../hooks/useForeninger";
-import { useSession } from "../hooks/useSession";
-import { supabase } from "../utils/supabase";
+
+// ✅ brug relative sti (alias '@/' kræver ekstra config)
+import BottomNav from "../../components/BottomNav";
+import { useAlleForeninger, useMineForeninger } from "../../hooks/useForeninger";
+import { useSession } from "../../hooks/useSession";
+import { supabase } from "../../utils/supabase";
 import { Forening } from "./types/forening";
 
 /* ───────── theme ───────── */

@@ -15,7 +15,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { supabase } from '../utils/supabase';
+import { supabase } from '../../utils/supabase';
 
 export const options = { headerShown: false };
 

@@ -1,4 +1,4 @@
-// app/Beskeder.tsx
+// app/protected/Beskeder.tsx
 import { useFocusEffect, useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
@@ -13,8 +13,8 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import BottomNav from "../components/BottomNav";
-import useBeskeder from "../hooks/useBeskeder";
+import BottomNav from "../../components/BottomNav";
+import useBeskeder from "../../hooks/useBeskeder";
 
 type ThreadItem = {
   thread_id: string;
@@ -80,10 +80,7 @@ export default function BeskederScreen() {
     setRefreshing(true);
     try {
       await refresh();
-    } catch (e) {
-      // valgfrit: log/ignore
     } finally {
-      // lille delay så UI ikke “blinker” ved meget hurtige svar
       setTimeout(() => setRefreshing(false), 250);
     }
   }, [refresh]);
@@ -206,11 +203,9 @@ export default function BeskederScreen() {
           columnWrapperStyle={NUM_COLS > 1 ? { gap: GAP } : undefined}
           renderItem={renderItem}
           ListEmptyComponent={<Text style={styles.empty}>Du har ingen beskeder endnu.</Text>}
-          // Pull-to-refresh
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={["#131921"]} />
           }
-          // Lidt bedre følelse ved pull
           bounces
           alwaysBounceVertical
           overScrollMode="always"

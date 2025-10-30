@@ -1,4 +1,4 @@
-// app/ChatScreen.tsx
+// app/protected/ChatScreen.tsx
 import { useNavigation, useRoute } from '@react-navigation/native';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -16,7 +16,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import { supabase } from '../utils/supabase';
+import { supabase } from '../../utils/supabase';
 
 /** Fallback UUID v4 hvis runtime ikke har crypto.randomUUID */
 function fallbackUuid() {

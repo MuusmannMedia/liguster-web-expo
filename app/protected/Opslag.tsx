@@ -1,4 +1,4 @@
-// app/Nabolag.tsx
+// app/protected/Opslag.tsx
 import React, { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,13 +17,13 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
-import BottomNav from "../components/BottomNav";
-import OpretOpslagDialog from "../components/OpretOpslagDialog";
-import OpslagDetaljeModal from "../components/OpslagDetaljeModal";
-import SvarModal from "../components/SvarModal";
-import { Post, useOpslag } from "../hooks/useOpslag";
-import { useHydrationGate } from "../hooks/useHydrationGate";
-import { supabase } from "../utils/supabase";
+import BottomNav from "../../components/BottomNav";
+import OpretOpslagDialog from "../../components/OpretOpslagDialog";
+import OpslagDetaljeModal from "../../components/OpslagDetaljeModal";
+import SvarModal from "../../components/SvarModal";
+import { Post, useOpslag, KATEGORIER } from "../../hooks/useOpslag";
+import { useHydrationGate } from "../../hooks/useHydrationGate";
+import { supabase } from "../../utils/supabase";
 
 /* ───────── theme ───────── */
 const COLORS = {
@@ -110,7 +110,6 @@ function KategoriDialog({
   onClose: () => void;
   onChange: (v: string | null) => void;
 }) {
-  const { KATEGORIER } = require("../hooks/useOpslag");
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={dialogStyles.overlay}>

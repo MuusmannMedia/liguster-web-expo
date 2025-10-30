@@ -14,7 +14,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { supabase } from "../utils/supabase";
+import { supabase } from "../../utils/supabase";
 
 export const options = { headerShown: false };
 

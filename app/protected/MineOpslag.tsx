@@ -13,12 +13,12 @@ import {
   Alert, // ⬅️ NY
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import BottomNav from "../components/BottomNav";
-import OpretOpslagDialog from "../components/OpretOpslagDialog";
-import OpslagDetaljeModal from "../components/OpslagDetaljeModal";
-import { useMineOpslag } from "../hooks/useMineOpslag";
-import { Post } from "../hooks/useOpslag";
-import { supabase } from "../utils/supabase"; // ⬅️ NY
+import BottomNav from "../../components/BottomNav";
+import OpretOpslagDialog from "../../components/OpretOpslagDialog";
+import OpslagDetaljeModal from "../../components/OpslagDetaljeModal";
+import { useMineOpslag } from "../../hooks/useMineOpslag";
+import { Post } from "../../hooks/useOpslag";
+import { supabase } from "../../utils/supabase"; // ⬅️ NY
 
 /* ───────── theme (matcher Opslag) ───────── */
 const COLORS = {

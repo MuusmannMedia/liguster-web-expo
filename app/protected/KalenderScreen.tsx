@@ -2,7 +2,7 @@ import { Feather } from "@expo/vector-icons"; // expo install @expo/vector-icons
 import { Stack } from "expo-router";
 import React, { useState } from "react";
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import BottomNav from "../components/BottomNav"; // Justér stien hvis nødvendigt!
+import BottomNav from "../../components/BottomNav"; // Justér stien hvis nødvendigt!
 
 const dummyEvents = [
   { id: "1", date: "2025-07-12", title: "Storskrald afhentes", type: "Affald", note: "Husk at stille storskrald ud før kl. 7" },

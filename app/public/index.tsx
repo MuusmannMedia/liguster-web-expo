@@ -1,4 +1,4 @@
-// app/index.web.tsx
+// app/public/index.tsx
 import React from "react";
 import { Link } from "expo-router";
 import {
@@ -35,7 +35,8 @@ export default function LandingPageWeb() {
 
           <Pressable
             onPress={() => {
-              window.location.href = "/privacy";
+              // ✅ korrekt public-sti
+              window.location.href = "/public/privacy";
             }}
             style={({ hovered }) => [
               styles.inlineLinkPressable,
@@ -49,7 +50,7 @@ export default function LandingPageWeb() {
         {/* Højre: logo uden tekst */}
         <View style={styles.rightCol}>
           <Image
-            source={require("../assets/images/Liguster-logo-NEG.png")}
+            source={require("../../assets/images/Liguster-logo-NEG.png")}
             style={styles.bigLogo}
           />
         </View>
@@ -90,13 +91,15 @@ export default function LandingPageWeb() {
           <Text style={styles.footerHeading}>Klar til at logge ind?</Text>
 
           <View style={styles.footerLinksRow}>
-            <Link href="/LoginScreen" style={styles.footerLinkHit}>
+            {/* ✅ korrekt public-sti til LoginScreen */}
+            <Link href="/public/LoginScreen" style={styles.footerLinkHit}>
               <Text style={styles.footerLinkText}>Log ind</Text>
             </Link>
 
             <Text style={styles.footerDot}>·</Text>
 
-            <Link href="/privacy" style={styles.footerLinkHit}>
+            {/* ✅ korrekt public-sti til privacy */}
+            <Link href="/public/privacy" style={styles.footerLinkHit}>
               <Text style={styles.footerLinkText}>Privacy Policy</Text>
             </Link>
           </View>
