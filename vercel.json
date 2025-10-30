@@ -1,7 +1,4 @@
 {
-  "redirects": [
-    { "source": "/", "destination": "/public" }
-  ],
   "rewrites": [
     { "source": "/((?!.*\\.).*)", "destination": "/index.html" }
   ]
