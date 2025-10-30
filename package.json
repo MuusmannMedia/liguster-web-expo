@@ -7,7 +7,7 @@
     "dev": "npx expo start --web",
     "start": "npx expo start --web --non-interactive --port $PORT",
     "web": "npx expo start --web",
-    "build": "EXPO_USE_STATIC=false npx expo export --platform web --output-dir dist"
+    "build": "expo export -p web --output-dir dist"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",

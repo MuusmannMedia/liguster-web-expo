@@ -1,0 +1,11 @@
+node_modules
+.git
+.vscode
+.DS_Store
+.expo
+.expo-shared
+ios
+android
+tests
+coverage
+**/*.map
