@@ -13,33 +13,19 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { supabase } from "../../utils/supabase";
 
 export const options = { headerShown: false };
 
-// --- Fix: wrapper der IKKE stjæler fokus på web ---
-function MaybeKeyboardDismiss({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const isWeb = Platform.OS === "web";
-
-  if (isWeb) {
-    // På web må vi IKKE wrappe i TouchableWithoutFeedback,
-    // ellers mister TextInput fokus og man kan ikke skrive.
-    return <View style={{ flex: 1 }}>{children}</View>;
-  }
-
-  // På native vil vi stadig gerne kunne trykke udenfor for at lukke tastaturet.
+/** Wrapper der ikke stjæler fokus på web */
+function MaybeKeyboardDismiss({ children }: { children: React.ReactNode }) {
+  if (Platform.OS === "web") return <View style={{ flex: 1 }}>{children}</View>;
   return (
     <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
       <View style={{ flex: 1 }}>{children}</View>
     </TouchableWithoutFeedback>
   );
 }
-// --- slut fix ---
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -48,7 +34,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const passwordRef = useRef<TextInput>(null);
 
-  const goHome = () => router.replace("/");
+  const goHome = () => router.replace("/public");
 
   const onLogin = async () => {
     if (!email || !password) {
@@ -57,10 +43,7 @@ export default function LoginScreen() {
     }
     try {
       setLoading(true);
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       router.replace("/protected/Opslag");
     } catch (e: any) {
@@ -72,8 +55,8 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.root}>
-      {/* Tilbage-knap øverst */}
-      <SafeAreaView edges={["top"]} style={styles.backSafe}>
+      {/* Top-bar uden SafeAreaView */}
+      <View style={styles.backSafe}>
         <TouchableOpacity
           style={styles.backBtn}
           onPress={goHome}
@@ -83,7 +66,7 @@ export default function LoginScreen() {
         >
           <Text style={styles.backIcon}>‹</Text>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
 
       {/* Form content */}
       <KeyboardAvoidingView
@@ -121,20 +104,12 @@ export default function LoginScreen() {
               onSubmitEditing={onLogin}
             />
 
-            {/* Log ind-knap */}
-            <TouchableOpacity
-              style={styles.button}
-              onPress={onLogin}
-              disabled={loading}
-            >
-              <Text style={styles.buttonText}>
-                {loading ? "Logger ind…" : "LOG IND"}
-              </Text>
+            <TouchableOpacity style={styles.button} onPress={onLogin} disabled={loading}>
+              <Text style={styles.buttonText}>{loading ? "Logger ind…" : "LOG IND"}</Text>
             </TouchableOpacity>
 
-            {/* Glemt kodeord */}
             <TouchableOpacity
-              onPress={() => router.push("/glemt-kodeord")}
+              onPress={() => router.push("/public/glemt-kodeord")}
               style={{ alignSelf: "center", marginTop: 16 }}
             >
               <Text style={styles.linkText}>Glemt kodeord?</Text>
@@ -149,12 +124,14 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#171C22" },
 
+  // Simpel topbar uden SafeAreaView – lidt padding-top
   backSafe: {
     position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     paddingHorizontal: 12,
+    paddingTop: Platform.OS === "web" ? 8 : 8, // kan evt. tunes
     zIndex: 20,
   },
   backBtn: {
@@ -174,12 +151,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
 
-  title: {
-    color: "#fff",
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 16,
-  },
+  title: { color: "#fff", fontSize: 28, fontWeight: "700", marginBottom: 16 },
 
   input: {
     backgroundColor: "#fff",
@@ -208,7 +180,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     elevation: 1,
   },
-
   buttonText: {
     color: "#171C22",
     fontSize: 16,
